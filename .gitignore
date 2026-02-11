@@ -1,0 +1,17 @@
+build/
+
+*.exe
+*.out
+*.app
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+
+.vscode/
+
+.DS_Store
+
+vcpkg_installed/
+conan/
