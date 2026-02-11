@@ -1,3 +1,4 @@
+#include "ui/game_scene.hpp"
 #include "ui/menu_scene.hpp"
 #include "ui/scene_manager.hpp"
 
@@ -19,6 +20,7 @@ int main()
 
     angry::SceneManager scenes;
     scenes.add_scene ( angry::SceneId::Menu, std::make_unique<angry::MenuScene> ( font ) );
+    scenes.add_scene ( angry::SceneId::Game, std::make_unique<angry::GameScene> ( font ) );
     scenes.switch_to ( angry::SceneId::Menu );
 
     while ( window.isOpen() )
