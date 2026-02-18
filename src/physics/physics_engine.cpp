@@ -17,6 +17,9 @@ namespace
 
 constexpr float kDegreesPerRadian = 57.2957795f;
 constexpr float kSlingshotForkYOffsetPx = 60.0f;
+constexpr float kProjectileSleepLinearSpeedMps = 0.6f;
+constexpr float kProjectileSleepAngularSpeedRad = 1.2f;
+constexpr int kProjectileSettledFramesNeeded = 15;
 
 inline float clampValue(float value, float minVal, float maxVal)
 {
@@ -61,6 +64,7 @@ void PhysicsEngine::loadLevel(const LevelData& level)
     nextId_ = 1;
     nextProjectileIndex_ = 0;
     activeProjectileBodyId_ = b2_nullBodyId;
+    activeProjectileSettledFrames_ = 0;
     levelYOffsetPx_ = 0.0f;
     supportBottomPx_ = 0.0f;
     events_.clear();
@@ -157,14 +161,79 @@ void PhysicsEngine::step(float dt)
 
     if (B2_IS_NON_NULL(activeProjectileBodyId_))
     {
-        const b2Vec2 worldPos = b2Body_GetPosition(activeProjectileBodyId_);
-        const Vec2 projectilePosPx = worldToPx({worldPos.x, worldPos.y});
-
-        if (isOutOfBoundsPx(projectilePosPx))
+        if (!b2Body_IsValid(activeProjectileBodyId_))
         {
-            destroyBody(activeProjectileBodyId_);
             activeProjectileBodyId_ = b2_nullBodyId;
+            activeProjectileSettledFrames_ = 0;
             tryPrepareNextProjectile();
+        }
+        else
+        {
+            const b2Vec2 worldPos = b2Body_GetPosition(activeProjectileBodyId_);
+            const Vec2 projectilePosPx = worldToPx({worldPos.x, worldPos.y});
+            b2Vec2 linearVel = b2Body_GetLinearVelocity(activeProjectileBodyId_);
+            float angularVel = b2Body_GetAngularVelocity(activeProjectileBodyId_);
+            const bool isAwake = b2Body_IsAwake(activeProjectileBodyId_);
+
+            bool onSurface = false;
+            const int contactCapacity = b2Body_GetContactCapacity(activeProjectileBodyId_);
+            if (contactCapacity > 0)
+            {
+                std::vector<b2ContactData> contacts(static_cast<size_t>(contactCapacity));
+                const int contactCount =
+                    b2Body_GetContactData(activeProjectileBodyId_, contacts.data(), contactCapacity);
+                for (int i = 0; i < contactCount; ++i)
+                {
+                    if (contacts[static_cast<size_t>(i)].manifold.pointCount > 0)
+                    {
+                        const b2Vec2 n = contacts[static_cast<size_t>(i)].manifold.normal;
+                        if (std::abs(n.y) > 0.5f)
+                        {
+                            onSurface = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Keep free flight unaffected, but add noticeable rolling slowdown on surfaces.
+            if (onSurface)
+            {
+                linearVel.x *= 0.97f;
+                b2Body_SetLinearVelocity(activeProjectileBodyId_, linearVel);
+                b2Body_SetAngularVelocity(activeProjectileBodyId_, angularVel * 0.97f);
+            }
+
+            linearVel = b2Body_GetLinearVelocity(activeProjectileBodyId_);
+            angularVel = b2Body_GetAngularVelocity(activeProjectileBodyId_);
+            const float linearSpeed = std::sqrt(linearVel.x * linearVel.x + linearVel.y * linearVel.y);
+            const bool settledNow = (!isAwake)
+                || (linearSpeed < kProjectileSleepLinearSpeedMps
+                    && std::abs(angularVel) < kProjectileSleepAngularSpeedRad);
+
+            if (settledNow)
+            {
+                activeProjectileSettledFrames_ += 1;
+            }
+            else
+            {
+                activeProjectileSettledFrames_ = 0;
+            }
+
+            if (isOutOfBoundsPx(projectilePosPx))
+            {
+                destroyBody(activeProjectileBodyId_);
+                activeProjectileBodyId_ = b2_nullBodyId;
+                activeProjectileSettledFrames_ = 0;
+                tryPrepareNextProjectile();
+            }
+            else if (activeProjectileSettledFrames_ >= kProjectileSettledFramesNeeded)
+            {
+                destroyBody(activeProjectileBodyId_);
+                activeProjectileBodyId_ = b2_nullBodyId;
+                activeProjectileSettledFrames_ = 0;
+                tryPrepareNextProjectile();
+            }
         }
     }
 
@@ -235,6 +304,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                 }
 
                 activeProjectileBodyId_ = projectileBodyId;
+                activeProjectileSettledFrames_ = 0;
                 nextProjectileIndex_++;
                 snapshot_.shotsRemaining = std::max(0, snapshot_.shotsRemaining - 1);
                 snapshot_.slingshot.canShoot = false;
@@ -289,14 +359,14 @@ void PhysicsEngine::createGround(float topYpx)
         wallHalfWidthM,
         wallHalfHeightM,
         b2Vec2{leftWallCenterXPx / PIXELS_PER_METER, wallCenterYPx / PIXELS_PER_METER},
-        b2MakeRot(0.0f));
+        0.0f);
     b2CreatePolygonShape(groundBodyId, &shapeDef, &leftWall);
 
     const b2Polygon rightWall = b2MakeOffsetBox(
         wallHalfWidthM,
         wallHalfHeightM,
         b2Vec2{rightWallCenterXPx / PIXELS_PER_METER, wallCenterYPx / PIXELS_PER_METER},
-        b2MakeRot(0.0f));
+        0.0f);
     b2CreatePolygonShape(groundBodyId, &shapeDef, &rightWall);
 
     const float ceilingHalfHeightM = 20.0f / PIXELS_PER_METER;
@@ -305,7 +375,7 @@ void PhysicsEngine::createGround(float topYpx)
         halfWidthM,
         ceilingHalfHeightM,
         b2Vec2{640.0f / PIXELS_PER_METER, ceilingCenterYPx / PIXELS_PER_METER},
-        b2MakeRot(0.0f));
+        0.0f);
     b2CreatePolygonShape(groundBodyId, &shapeDef, &ceiling);
 }
 
@@ -441,9 +511,8 @@ b2BodyId PhysicsEngine::createProjectileBody(ProjectileType type, const Vec2& sp
 
     b2ShapeDef shapeDef = b2DefaultShapeDef();
     shapeDef.density = density;
-    shapeDef.material.friction = 0.35f;
-    shapeDef.material.restitution = 0.05f;
-    shapeDef.material.rollingResistance = 0.08f;
+    shapeDef.friction = 0.35f;
+    shapeDef.restitution = 0.05f;
 
     b2Circle circle = {};
     circle.center = b2Vec2{0.0f, 0.0f};
