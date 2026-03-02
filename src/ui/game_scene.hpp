@@ -32,6 +32,8 @@ public:
 
     const LevelResult& get_last_result() const { return last_result_; }
 
+    void load_level ( int level_id );
+
     SceneId handle_input ( const sf::Event& event ) override;
     void update() override;
     void render ( sf::RenderWindow& window ) override;

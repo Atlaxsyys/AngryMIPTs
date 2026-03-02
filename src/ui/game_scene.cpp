@@ -106,6 +106,24 @@ GameScene::GameScene ( const sf::Font& font )
     }
 }
 
+void GameScene::load_level ( int level_id )
+{
+    try
+    {
+        const std::string path = resolveProjectPath (
+            "levels/level_0" + std::to_string ( level_id ) + ".json" );
+        const LevelData level = level_loader_.load ( path );
+        physics_.loadLevel ( level );
+        snapshot_ = physics_.getSnapshot();
+        frame_clock_.restart();
+        Logger::info ( "GameScene: loaded level {}", level_id );
+    }
+    catch ( const std::exception& e )
+    {
+        Logger::error ( "GameScene: failed to load level {}: {}", level_id, e.what() );
+    }
+}
+
 SceneId GameScene::handle_input ( const sf::Event& event )
 {
     if ( const auto* key = event.getIf<sf::Event::KeyPressed>() )

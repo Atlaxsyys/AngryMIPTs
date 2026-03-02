@@ -1,6 +1,7 @@
 #include "ui/scene_manager.hpp"
 
 #include "ui/game_scene.hpp"
+#include "ui/level_select_scene.hpp"
 #include "ui/result_scene.hpp"
 
 namespace angry
@@ -32,6 +33,15 @@ void SceneManager::handle_input ( const sf::Event& event )
             if ( game && result )
                 result->set_result ( game->get_last_result() );
         }
+
+        if ( next == SceneId::Game && prev == SceneId::LevelSelect )
+        {
+            auto* level_select = get_scene<LevelSelectScene> ( SceneId::LevelSelect );
+            auto* game = get_scene<GameScene> ( SceneId::Game );
+            if ( level_select && game )
+                game->load_level ( level_select->get_selected_level_id() );
+        }
+
         switch_to ( next );
     }
 }
