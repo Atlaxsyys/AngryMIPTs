@@ -18,6 +18,7 @@ private:
     std::vector<LevelMeta> levels_;
     std::vector<LevelScore> scores_;
     std::vector<sf::Text> level_texts_;
+    std::string scores_path_;
 
     int selected_ = 0;
     int selected_level_id_ = -1;
@@ -29,8 +30,10 @@ public:
     explicit LevelSelectScene ( const sf::Font& font );
 
     void load_data ( const std::string& levels_dir, const std::string& scores_path );
+    void reload_scores();
 
     int get_selected_level_id() const { return selected_level_id_; }
+    const std::string& get_scores_path() const { return scores_path_; }
 
     SceneId handle_input ( const sf::Event& event ) override;
     void update() override;

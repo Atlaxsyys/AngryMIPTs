@@ -11,12 +11,14 @@ LevelSelectScene::LevelSelectScene ( const sf::Font& font )
     , prompt_ ( font_, "[Enter] Play   [Backspace] Menu", 18 )
 {
     title_.setFillColor ( sf::Color::White );
-    prompt_.setFillColor ( sf::Color ( 180, 180, 180 ) );
+    prompt_.setFillColor ( sf::Color ( 230, 245, 255 ) );
 }
 
 void LevelSelectScene::load_data ( const std::string& levels_dir,
                                     const std::string& scores_path )
 {
+    scores_path_ = scores_path;
+
     try
     {
         LevelLoader loader;
@@ -30,7 +32,7 @@ void LevelSelectScene::load_data ( const std::string& levels_dir,
     try
     {
         ScoreSaver saver;
-        scores_ = saver.loadScores ( scores_path );
+        scores_ = saver.loadScores ( scores_path_ );
     }
     catch ( const std::exception& )
     {
@@ -39,6 +41,24 @@ void LevelSelectScene::load_data ( const std::string& levels_dir,
     }
 
     selected_ = 0;
+    rebuild_texts();
+}
+
+void LevelSelectScene::reload_scores()
+{
+    if ( scores_path_.empty() )
+        return;
+
+    try
+    {
+        ScoreSaver saver;
+        scores_ = saver.loadScores ( scores_path_ );
+    }
+    catch ( const std::exception& )
+    {
+        scores_.clear();
+    }
+
     rebuild_texts();
 }
 
