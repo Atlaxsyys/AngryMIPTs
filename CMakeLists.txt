@@ -15,7 +15,6 @@ if(box2d_FOUND)
     set(ANGRY_BOX2D_TARGET box2d::box2d)
     message(STATUS "Found box2d package")
 else()
-    # AngryMipts uses only the physics library, so keep optional Box2D extras off.
     set(BOX2D_UNIT_TESTS OFF CACHE BOOL "Disable Box2D unit tests" FORCE)
     set(BOX2D_SAMPLES OFF CACHE BOOL "Disable Box2D samples" FORCE)
     set(BOX2D_BENCHMARKS OFF CACHE BOOL "Disable Box2D benchmarks" FORCE)
@@ -85,6 +84,7 @@ add_executable(${PROJECT_NAME}
     src/ui/menu_scene.cpp
     src/ui/game_scene.cpp
     src/ui/slingshot.cpp
+    src/ui/result_scene.cpp
     src/render/renderer.cpp
 )
 target_include_directories(${PROJECT_NAME} PRIVATE src)

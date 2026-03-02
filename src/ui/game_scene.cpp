@@ -42,7 +42,7 @@ WorldSnapshot GameScene::make_mock_snapshot()
     snap.stars = 0;
     snap.physicsStepMs = 0.f;
 
-    // Slingshot
+    // slingshot
     snap.slingshot.basePx = {200.f, 550.f};
     snap.slingshot.pullOffsetPx = {0.f, 0.f};
     snap.slingshot.maxPullPx = 120.f;
@@ -51,32 +51,32 @@ WorldSnapshot GameScene::make_mock_snapshot()
 
     EntityId id = 1;
 
-    // Ground
+    // ground
     snap.objects.push_back ( {id++, ObjectSnapshot::Kind::Block,
                               {640.f, 700.f}, 0.f, {1280.f, 40.f}, 0.f,
                               Material::Stone, 1.f, true} );
 
-    // Left pillar
+    // left pillar
     snap.objects.push_back ( {id++, ObjectSnapshot::Kind::Block,
                               {800.f, 580.f}, 0.f, {20.f, 100.f}, 0.f,
                               Material::Wood, 1.f, true} );
 
-    // Right pillar
+    // right pillar
     snap.objects.push_back ( {id++, ObjectSnapshot::Kind::Block,
                               {900.f, 580.f}, 0.f, {20.f, 100.f}, 0.f,
                               Material::Wood, 1.f, true} );
 
-    // Top beam
+    // top beam
     snap.objects.push_back ( {id++, ObjectSnapshot::Kind::Block,
                               {850.f, 520.f}, 0.f, {140.f, 20.f}, 0.f,
                               Material::Wood, 0.8f, true} );
 
-    // Glass block on top
+    // glass block on top
     snap.objects.push_back ( {id++, ObjectSnapshot::Kind::Block,
                               {850.f, 500.f}, 0.f, {60.f, 20.f}, 0.f,
                               Material::Glass, 1.f, true} );
 
-    // Target (circle)
+    // target (circle)
     snap.objects.push_back ( {id++, ObjectSnapshot::Kind::Target,
                               {850.f, 560.f}, 0.f, {0.f, 0.f}, 15.f,
                               Material::Wood, 1.f, true} );
@@ -112,6 +112,18 @@ SceneId GameScene::handle_input ( const sf::Event& event )
     {
         if ( key->code == sf::Keyboard::Key::Backspace )
             return SceneId::Menu;
+
+        // TODO: remove debug keys when physics is integrated
+        if ( key->code == sf::Keyboard::Key::W )
+        {
+            last_result_ = {true, 3500, 2};
+            return SceneId::Result;
+        }
+        if ( key->code == sf::Keyboard::Key::L )
+        {
+            last_result_ = {false, 500, 0};
+            return SceneId::Result;
+        }
     }
 
     auto cmd = slingshot_.handle_input ( event, snapshot_.slingshot );

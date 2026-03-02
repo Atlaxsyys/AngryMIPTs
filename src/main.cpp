@@ -1,5 +1,6 @@
 #include "ui/game_scene.hpp"
 #include "ui/menu_scene.hpp"
+#include "ui/result_scene.hpp"
 #include "ui/scene_manager.hpp"
 
 #include <SFML/Graphics.hpp>
@@ -49,6 +50,7 @@ int main()
     angry::SceneManager scenes;
     scenes.add_scene ( angry::SceneId::Menu, std::make_unique<angry::MenuScene> ( font ) );
     scenes.add_scene ( angry::SceneId::Game, std::make_unique<angry::GameScene> ( font ) );
+    scenes.add_scene ( angry::SceneId::Result, std::make_unique<angry::ResultScene> ( font ) );
     scenes.switch_to ( angry::SceneId::Menu );
 
     while ( window.isOpen() )

@@ -1,5 +1,8 @@
 #include "ui/scene_manager.hpp"
 
+#include "ui/game_scene.hpp"
+#include "ui/result_scene.hpp"
+
 namespace angry
 {
 
@@ -18,9 +21,19 @@ void SceneManager::handle_input ( const sf::Event& event )
     if ( current_id_ == SceneId::None )
         return;
 
+    auto prev = current_id_;
     auto next = scenes_[current_id_]->handle_input ( event );
     if ( next != SceneId::None )
+    {
+        if ( next == SceneId::Result && prev == SceneId::Game )
+        {
+            auto* game = get_scene<GameScene> ( SceneId::Game );
+            auto* result = get_scene<ResultScene> ( SceneId::Result );
+            if ( game && result )
+                result->set_result ( game->get_last_result() );
+        }
         switch_to ( next );
+    }
 }
 
 void SceneManager::update()
