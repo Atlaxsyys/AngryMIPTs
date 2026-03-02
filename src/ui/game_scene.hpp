@@ -5,6 +5,7 @@
 #include "scene.hpp"
 #include "shared/thread_safe_queue.hpp"
 #include "shared/world_snapshot.hpp"
+#include "ui/result_scene.hpp"
 #include "ui/slingshot.hpp"
 
 namespace angry
@@ -22,11 +23,14 @@ private:
     sf::Font font_;
     sf::Text hud_text_;
     sf::Clock frame_clock_;
+    LevelResult last_result_;
 
     static WorldSnapshot make_mock_snapshot();
 
 public:
     explicit GameScene ( const sf::Font& font );
+
+    const LevelResult& get_last_result() const { return last_result_; }
 
     SceneId handle_input ( const sf::Event& event ) override;
     void update() override;

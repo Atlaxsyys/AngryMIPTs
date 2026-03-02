@@ -17,6 +17,15 @@ public:
     void add_scene ( SceneId id, std::unique_ptr<Scene> scene );
     void switch_to ( SceneId id );
 
+    template <typename T>
+    T* get_scene ( SceneId id )
+    {
+        auto it = scenes_.find ( id );
+        if ( it == scenes_.end() )
+            return nullptr;
+        return dynamic_cast<T*> ( it->second.get() );
+    }
+
     void handle_input ( const sf::Event& event );
     void update();
     void render ( sf::RenderWindow& window );
