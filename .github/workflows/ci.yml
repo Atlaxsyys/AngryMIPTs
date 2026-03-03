@@ -45,6 +45,7 @@ jobs:
           git clone --depth 1 --branch 3.0.1 https://github.com/SFML/SFML.git /tmp/SFML
           cmake -S /tmp/SFML -B /tmp/SFML/build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_INSTALL_PREFIX="$HOME/sfml"
           cmake --build /tmp/SFML/build --parallel
           cmake --install /tmp/SFML/build
