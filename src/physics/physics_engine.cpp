@@ -688,8 +688,8 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                         const Vec2 rightVelPx = rotatePxVector(velPx, kSplitAngleRad);
 
                         // Spawn split projectiles exactly at the parent position.
-                        createProjectileBody(ProjectileType::Standard, posPx, leftVelPx);
-                        createProjectileBody(ProjectileType::Standard, posPx, rightVelPx);
+                        createProjectileBody(ProjectileType::Splitter, posPx, leftVelPx);
+                        createProjectileBody(ProjectileType::Splitter, posPx, rightVelPx);
                         activeProjectileAbilityUsed_ = true;
                     }
                 }

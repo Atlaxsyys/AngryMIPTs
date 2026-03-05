@@ -199,11 +199,11 @@ sf::Color Renderer::projectile_color ( ProjectileType type )
     switch ( type )
     {
     case ProjectileType::Heavy:
-        return sf::Color ( 45, 35, 55 );
+        return sf::Color ( 80, 40, 120 );
     case ProjectileType::Splitter:
-        return sf::Color ( 40, 70, 110 );
+        return sf::Color ( 50, 130, 200 );
     default:
-        return sf::Color ( 60, 55, 50 );
+        return sf::Color ( 200, 60, 60 );
     }
 }
 
@@ -212,11 +212,11 @@ sf::Color Renderer::projectile_outline ( ProjectileType type )
     switch ( type )
     {
     case ProjectileType::Heavy:
-        return sf::Color ( 140, 80, 180 );
+        return sf::Color ( 160, 100, 220 );
     case ProjectileType::Splitter:
-        return sf::Color ( 80, 160, 220 );
+        return sf::Color ( 100, 190, 255 );
     default:
-        return sf::Color ( 120, 110, 100 );
+        return sf::Color ( 255, 120, 120 );
     }
 }
 
