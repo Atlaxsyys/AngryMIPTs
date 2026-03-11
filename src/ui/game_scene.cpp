@@ -974,7 +974,7 @@ void GameScene::process_events()
                         ghost.radius = 9.f;
                         dropper_payload_ghosts_.push_back ( ghost );
                     }
-                    else if ( e.projectileType == ProjectileType::Boomerang )
+                    if ( e.projectileType == ProjectileType::Boomerang )
                     {
                         particles_.emit_ring ( pos, 14, glow, 164.f, 0.24f, 3.9f );
                         particles_.emit_shards ( pos, 10, core, 188.f, 0.36f, 3.1f, 860.f );
@@ -983,6 +983,27 @@ void GameScene::process_events()
                     {
                         particles_.emit_ring ( pos, 10, glow, 208.f, 0.18f, 3.0f );
                         particles_.emit ( pos, 12, core, 194.f, 0.22f, 3.4f );
+                    }
+                    else if ( e.projectileType == ProjectileType::Inflater )
+                    {
+                        // Expanding balloon ring — three concentric circles that grow outward
+                        InflaterExpandRing r1; r1.position = pos; r1.maxRadius = 50.f;  r1.lifetime = 0.40f; inflater_rings_.push_back ( r1 );
+                        InflaterExpandRing r2; r2.position = pos; r2.maxRadius = 85.f;  r2.lifetime = 0.55f; inflater_rings_.push_back ( r2 );
+                        InflaterExpandRing r3; r3.position = pos; r3.maxRadius = 120.f; r3.lifetime = 0.70f; inflater_rings_.push_back ( r3 );
+                    }
+                    else if ( e.projectileType == ProjectileType::Bubbler )
+                    {
+                        // Spawn 8 floating soap bubbles that drift upward and pop
+                        for ( int b = 0; b < 8; ++b )
+                        {
+                            BubbleFloat bf;
+                            const float angle = static_cast<float> ( b ) * 2.f * 3.14159f / 8.f;
+                            bf.position = pos + sf::Vector2f ( std::cos ( angle ) * 28.f,
+                                                               std::sin ( angle ) * 18.f );
+                            bf.radius   = 8.f + static_cast<float> ( b % 3 ) * 5.f;
+                            bf.lifetime = 1.0f + static_cast<float> ( b % 4 ) * 0.25f;
+                            bubble_floats_.push_back ( bf );
+                        }
                     }
 
                     shake_time_ = std::max ( shake_time_, cfg.shakeTime );
@@ -1063,10 +1084,36 @@ void GameScene::update()
             dropper_payload_ghosts_.end() );
     };
 
+    auto update_inflater_rings = [this, dt] ()
+    {
+        for ( auto& r : inflater_rings_ )
+            r.age += dt;
+        inflater_rings_.erase (
+            std::remove_if ( inflater_rings_.begin(), inflater_rings_.end(),
+                             [] ( const InflaterExpandRing& r ) { return r.age >= r.lifetime; } ),
+            inflater_rings_.end() );
+    };
+
+    auto update_bubble_floats = [this, dt] ()
+    {
+        for ( auto& b : bubble_floats_ )
+        {
+            b.age += dt;
+            b.position.y -= ( 55.f + b.radius * 2.f ) * dt;  // float upward
+            b.position.x += std::sin ( b.age * 3.5f + b.radius ) * 12.f * dt;  // sway
+        }
+        bubble_floats_.erase (
+            std::remove_if ( bubble_floats_.begin(), bubble_floats_.end(),
+                             [] ( const BubbleFloat& b ) { return b.age >= b.lifetime; } ),
+            bubble_floats_.end() );
+    };
+
     if ( snapshot_.status != LevelStatus::Running )
     {
         particles_.update ( dt );
         update_dropper_payload_ghosts();
+        update_inflater_rings();
+        update_bubble_floats();
         end_delay_ += dt;
         if ( end_delay_ >= 1.5f && pending_scene_ == SceneId::None )
             finish_level();
@@ -1088,7 +1135,23 @@ void GameScene::update()
                               projectile_trail_color ( obj.projectileType ),
                               38.f, 0.20f, 3.5f );
 
-            if ( obj.projectileType == ProjectileType::Bomber && obj.radiusPx > 0.f )
+            if ( obj.projectileType == ProjectileType::Heavy && obj.radiusPx > 0.f )
+            {
+                // Massive shockwave aura — heavy plows through air leaving a dense purple wake
+                static sf::Clock heavy_idle_clock;
+                const float t     = heavy_idle_clock.getElapsedTime().asSeconds();
+                const float pulse = 0.5f + 0.5f * std::sin ( t * 8.f );
+                const sf::Vector2f pos { obj.positionPx.x, obj.positionPx.y };
+                particles_.emit ( pos, 3,
+                                  sf::Color ( 148, 90, 220,
+                                              static_cast<uint8_t> ( 140.f + pulse * 50.f ) ),
+                                  60.f + pulse * 30.f, 0.28f, 5.2f );
+                particles_.emit ( pos, 2,
+                                  sf::Color ( 200, 160, 255,
+                                              static_cast<uint8_t> ( 90.f + pulse * 40.f ) ),
+                                  40.f, 0.18f, 3.8f );
+            }
+            else if ( obj.projectileType == ProjectileType::Bomber && obj.radiusPx > 0.f )
             {
                 static sf::Clock bomber_idle_clock;
                 const float t = bomber_idle_clock.getElapsedTime().asSeconds();
@@ -1127,6 +1190,8 @@ void GameScene::update()
     }
 
     update_dropper_payload_ghosts();
+    update_inflater_rings();
+    update_bubble_floats();
 
     if ( shake_time_ > 0.f )
     {
@@ -1209,6 +1274,59 @@ void GameScene::render ( sf::RenderWindow& window )
         core.setFillColor ( sf::Color ( 236, 255, 246,
                                         static_cast<uint8_t> ( 220.f * life_t ) ) );
         world_pass_.draw ( core );
+    }
+
+    // Inflater expanding rings
+    for ( const auto& ring : inflater_rings_ )
+    {
+        const float t = std::clamp ( ring.age / ring.lifetime, 0.f, 1.f );
+        const float ease = 1.f - ( 1.f - t ) * ( 1.f - t );  // ease-out quad
+        const float r    = ring.maxRadius * ease;
+        const float a    = static_cast<float> ( std::max ( 0.f, 1.f - t * 1.4f ) );
+
+        sf::CircleShape ring_shape ( r );
+        ring_shape.setOrigin ( {r, r} );
+        ring_shape.setPosition ( ring.position );
+        ring_shape.setFillColor ( sf::Color::Transparent );
+        ring_shape.setOutlineThickness ( std::max ( 1.f, 4.f * ( 1.f - t ) ) );
+        ring_shape.setOutlineColor ( sf::Color ( 255, 210, 230,
+                                                  static_cast<uint8_t> ( 220.f * a ) ) );
+        world_pass_.draw ( ring_shape );
+    }
+
+    // Bubbler floating soap bubbles
+    for ( const auto& bub : bubble_floats_ )
+    {
+        const float life_t = std::clamp ( 1.f - bub.age / bub.lifetime, 0.f, 1.f );
+        const float r      = bub.radius;
+
+        // Outer glow
+        sf::CircleShape glow_b ( r * 1.5f );
+        glow_b.setOrigin ( {r * 1.5f, r * 1.5f} );
+        glow_b.setPosition ( bub.position );
+        glow_b.setFillColor ( sf::Color ( 180, 240, 255,
+                                           static_cast<uint8_t> ( 35.f * life_t ) ) );
+        world_pass_.draw ( glow_b );
+
+        // Bubble shell
+        sf::CircleShape shell_b ( r );
+        shell_b.setOrigin ( {r, r} );
+        shell_b.setPosition ( bub.position );
+        shell_b.setFillColor ( sf::Color ( 210, 248, 255,
+                                            static_cast<uint8_t> ( 28.f * life_t ) ) );
+        shell_b.setOutlineThickness ( 1.5f );
+        shell_b.setOutlineColor ( sf::Color ( 192, 238, 255,
+                                               static_cast<uint8_t> ( 200.f * life_t ) ) );
+        world_pass_.draw ( shell_b );
+
+        // Rainbow highlight (small white circle at top-left)
+        const float hr = r * 0.30f;
+        sf::CircleShape highlight ( hr );
+        highlight.setOrigin ( {hr, hr} );
+        highlight.setPosition ( bub.position + sf::Vector2f ( -r * 0.35f, -r * 0.40f ) );
+        highlight.setFillColor ( sf::Color ( 255, 255, 255,
+                                              static_cast<uint8_t> ( 110.f * life_t ) ) );
+        world_pass_.draw ( highlight );
     }
 
     particles_.render ( world_pass_ );
