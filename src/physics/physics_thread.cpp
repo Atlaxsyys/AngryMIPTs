@@ -59,6 +59,7 @@ void PhysicsThread::loadLevel(const LevelData& level)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     engine_.loadLevel(level);
+    publishSnapshotLocked();
 }
 
 void PhysicsThread::pushCommand(const Command& cmd)
@@ -76,6 +77,7 @@ void PhysicsThread::tickSingleThread(float dt)
     std::lock_guard<std::mutex> lock(mutex_);
     engine_.processCommands(commandQueue_);
     engine_.step(dt);
+    publishSnapshotLocked();
 
     std::vector<Event> events = engine_.drainEvents();
     for (const Event& event : events)
@@ -86,8 +88,8 @@ void PhysicsThread::tickSingleThread(float dt)
 
 WorldSnapshot PhysicsThread::readSnapshot() const
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return engine_.getSnapshot();
+    const int front = frontSnapshotIndex_.load(std::memory_order_acquire);
+    return snapshots_[static_cast<size_t>(front)];
 }
 
 std::vector<Event> PhysicsThread::drainEvents()
@@ -123,6 +125,7 @@ void PhysicsThread::workerLoop()
                 std::lock_guard<std::mutex> lock(mutex_);
                 engine_.processCommands(commandQueue_);
                 engine_.step(kFixedDtSec);
+                publishSnapshotLocked();
 
                 std::vector<Event> events = engine_.drainEvents();
                 for (const Event& event : events)
@@ -143,6 +146,14 @@ void PhysicsThread::workerLoop()
                 return stopRequested_.load(std::memory_order_acquire);
             });
     }
+}
+
+void PhysicsThread::publishSnapshotLocked()
+{
+    const int front = frontSnapshotIndex_.load(std::memory_order_relaxed);
+    const int back = 1 - front;
+    snapshots_[static_cast<size_t>(back)] = engine_.getSnapshot();
+    frontSnapshotIndex_.store(back, std::memory_order_release);
 }
 
 }  // namespace angry

@@ -9,6 +9,7 @@
 #include "../shared/world_snapshot.hpp"
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -41,6 +42,7 @@ public:
 
 private:
     void workerLoop();
+    void publishSnapshotLocked();
 
     static constexpr float kFixedDtSec = 1.0f / 60.0f;
 
@@ -51,6 +53,8 @@ private:
     PhysicsEngine engine_;
     ThreadSafeQueue<Command> commandQueue_;
     ThreadSafeQueue<Event> eventQueue_;
+    std::array<WorldSnapshot, 2> snapshots_{};
+    std::atomic<int> frontSnapshotIndex_{0};
     bool running_ = false;
 };
 
