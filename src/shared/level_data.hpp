@@ -7,11 +7,19 @@
 namespace angry
 {
 
+enum class BlockShape : uint8_t
+{
+    Rect,
+    Circle,
+    Triangle,
+};
+
 struct BlockData
 {
     Vec2 positionPx;
     Vec2 sizePx;
-    float radiusPx;  // 0 if rectangle
+    float radiusPx;  // >0 only for circle blocks
+    BlockShape shape = BlockShape::Rect;
     float angleDeg;
     Material material;
     float hp;

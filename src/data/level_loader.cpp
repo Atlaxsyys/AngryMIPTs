@@ -307,6 +307,7 @@ BlockData parseBlock( const Json& value, std::size_t index )
             throw std::runtime_error( context + ".size: width and height must be > 0" );
         }
         block.radiusPx = 0.0f;
+        block.shape = BlockShape::Rect;
     }
     else if ( shape == "circle" )
     {
@@ -317,10 +318,21 @@ BlockData parseBlock( const Json& value, std::size_t index )
             throw std::runtime_error( context + ".radius: expected value > 0" );
         }
         block.sizePx = { 0.0f, 0.0f };
+        block.shape = BlockShape::Circle;
+    }
+    else if ( shape == "triangle" )
+    {
+        block.sizePx = parseVec2( requireField( value, "size", context ), context + ".size" );
+        if ( block.sizePx.x <= 0.0f || block.sizePx.y <= 0.0f )
+        {
+            throw std::runtime_error( context + ".size: width and height must be > 0" );
+        }
+        block.radiusPx = 0.0f;
+        block.shape = BlockShape::Triangle;
     }
     else
     {
-        throw std::runtime_error( context + ".shape: expected 'rect' or 'circle'" );
+        throw std::runtime_error( context + ".shape: expected 'rect', 'circle' or 'triangle'" );
     }
 
     return block;

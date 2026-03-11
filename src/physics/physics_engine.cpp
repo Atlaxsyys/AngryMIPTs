@@ -1082,19 +1082,22 @@ void PhysicsEngine::createBlockBody(const BlockData& block)
         return;
     }
 
+    const bool isCircle = block.shape == BlockShape::Circle || block.radiusPx > 0.0f;
+    const bool isTriangle = block.shape == BlockShape::Triangle;
+
     b2BodyDef bodyDef = b2DefaultBodyDef();
     bodyDef.type = b2_dynamicBody;
     Vec2 adjustedPositionPx = block.positionPx;
     adjustedPositionPx.y += levelYOffsetPx_;
 
-    const float originalBottomPx = block.radiusPx > 0.0f
+    const float originalBottomPx = isCircle
         ? block.positionPx.y + block.radiusPx
         : block.positionPx.y + (block.sizePx.y * 0.5f);
 
     // Force support blocks ("legs") to start exactly on the floor level.
     if (std::abs(originalBottomPx - supportBottomPx_) < 0.5f)
     {
-        const float halfHeightPx = block.radiusPx > 0.0f
+        const float halfHeightPx = isCircle
             ? block.radiusPx
             : (block.sizePx.y * 0.5f);
         adjustedPositionPx.y = groundTopYpx_ - halfHeightPx;
@@ -1111,12 +1114,34 @@ void PhysicsEngine::createBlockBody(const BlockData& block)
     shapeDef.restitution = 0.08f;
     shapeDef.enableHitEvents = true;
 
-    if (block.radiusPx > 0.0f)
+    if (isCircle)
     {
         b2Circle circle = {};
         circle.center = b2Vec2{0.0f, 0.0f};
         circle.radius = block.radiusPx / PIXELS_PER_METER;
         b2CreateCircleShape(bodyId, &shapeDef, &circle);
+    }
+    else if (isTriangle)
+    {
+        const float halfWidthM = (block.sizePx.x * 0.5f) / PIXELS_PER_METER;
+        const float halfHeightM = (block.sizePx.y * 0.5f) / PIXELS_PER_METER;
+        const b2Vec2 vertices[3] = {
+            b2Vec2{-halfWidthM, halfHeightM},
+            b2Vec2{halfWidthM, halfHeightM},
+            b2Vec2{0.0f, -halfHeightM},
+        };
+
+        const b2Hull hull = b2ComputeHull(vertices, 3);
+        if (hull.count == 3 && b2ValidateHull(&hull))
+        {
+            const b2Polygon triangle = b2MakePolygon(&hull, 0.0f);
+            b2CreatePolygonShape(bodyId, &shapeDef, &triangle);
+        }
+        else
+        {
+            const b2Polygon fallbackBox = b2MakeBox(halfWidthM, halfHeightM);
+            b2CreatePolygonShape(bodyId, &shapeDef, &fallbackBox);
+        }
     }
     else
     {
