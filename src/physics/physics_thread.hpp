@@ -8,7 +8,11 @@
 #include "../shared/thread_safe_queue.hpp"
 #include "../shared/world_snapshot.hpp"
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 namespace angry
@@ -36,9 +40,17 @@ public:
     std::vector<Event> drainEvents();
 
 private:
+    void workerLoop();
+
+    static constexpr float kFixedDtSec = 1.0f / 60.0f;
+
     mutable std::mutex mutex_;
+    std::condition_variable stopCv_;
+    std::thread worker_;
+    std::atomic<bool> stopRequested_{false};
     PhysicsEngine engine_;
     ThreadSafeQueue<Command> commandQueue_;
+    ThreadSafeQueue<Event> eventQueue_;
     bool running_ = false;
 };
 

@@ -1,5 +1,7 @@
 #include "physics_thread.hpp"
 
+#include <algorithm>
+
 namespace angry
 {
 
@@ -11,13 +13,34 @@ PhysicsThread::~PhysicsThread()
 void PhysicsThread::start()
 {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (running_)
+    {
+        return;
+    }
+
+    stopRequested_.store(false, std::memory_order_release);
     running_ = true;
+    worker_ = std::thread(&PhysicsThread::workerLoop, this);
 }
 
 void PhysicsThread::stop()
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    running_ = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!running_)
+        {
+            return;
+        }
+
+        stopRequested_.store(true, std::memory_order_release);
+        running_ = false;
+    }
+
+    stopCv_.notify_all();
+    if (worker_.joinable())
+    {
+        worker_.join();
+    }
 }
 
 bool PhysicsThread::isRunning() const
@@ -45,14 +68,20 @@ void PhysicsThread::pushCommand(const Command& cmd)
 
 void PhysicsThread::tickSingleThread(float dt)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!running_)
+    if (isRunning())
     {
         return;
     }
 
+    std::lock_guard<std::mutex> lock(mutex_);
     engine_.processCommands(commandQueue_);
     engine_.step(dt);
+
+    std::vector<Event> events = engine_.drainEvents();
+    for (const Event& event : events)
+    {
+        eventQueue_.push(event);
+    }
 }
 
 WorldSnapshot PhysicsThread::readSnapshot() const
@@ -63,8 +92,57 @@ WorldSnapshot PhysicsThread::readSnapshot() const
 
 std::vector<Event> PhysicsThread::drainEvents()
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return engine_.drainEvents();
+    std::vector<Event> events;
+    while (const std::optional<Event> event = eventQueue_.try_pop())
+    {
+        events.push_back(*event);
+    }
+    return events;
+}
+
+void PhysicsThread::workerLoop()
+{
+    using clock = std::chrono::steady_clock;
+    const auto fixedDt = std::chrono::duration<double>(kFixedDtSec);
+    auto previous = clock::now();
+    std::chrono::duration<double> accumulator{0.0};
+
+    while (!stopRequested_.load(std::memory_order_acquire))
+    {
+        const auto now = clock::now();
+        accumulator += now - previous;
+        previous = now;
+
+        // Prevent very large catch-up after breakpoints/sleep.
+        accumulator = std::min(accumulator, fixedDt * 5);
+
+        while (accumulator >= fixedDt
+            && !stopRequested_.load(std::memory_order_acquire))
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                engine_.processCommands(commandQueue_);
+                engine_.step(kFixedDtSec);
+
+                std::vector<Event> events = engine_.drainEvents();
+                for (const Event& event : events)
+                {
+                    eventQueue_.push(event);
+                }
+            }
+
+            accumulator -= fixedDt;
+        }
+
+        std::unique_lock<std::mutex> sleepLock(mutex_);
+        stopCv_.wait_for(
+            sleepLock,
+            std::chrono::milliseconds(1),
+            [this]()
+            {
+                return stopRequested_.load(std::memory_order_acquire);
+            });
+    }
 }
 
 }  // namespace angry
