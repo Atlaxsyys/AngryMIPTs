@@ -994,6 +994,17 @@ void GameScene::process_events()
     }
 }
 
+SceneId GameScene::poll_pending_scene()
+{
+    if ( pending_scene_ != SceneId::None )
+    {
+        SceneId next  = pending_scene_;
+        pending_scene_ = SceneId::None;
+        return next;
+    }
+    return SceneId::None;
+}
+
 SceneId GameScene::handle_input ( const sf::Event& event )
 {
     if ( event.getIf<sf::Event::Resized>() || event.getIf<sf::Event::FocusGained>() )

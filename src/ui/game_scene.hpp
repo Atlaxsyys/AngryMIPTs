@@ -84,6 +84,11 @@ public:
     SceneId handle_input ( const sf::Event& event ) override;
     void update() override;
     void render ( sf::RenderWindow& window ) override;
+
+    // Returns and clears pending_scene_ — called by SceneManager::update()
+    // so level-end transitions happen without waiting for an input event.
+    SceneId poll_pending_scene();
+
 };
 
 }  // namespace angry
