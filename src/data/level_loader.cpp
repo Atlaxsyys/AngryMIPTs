@@ -96,6 +96,16 @@ std::string requireString( const Json& value, const std::string& context )
     return value.get<std::string>();
 }
 
+bool requireBool( const Json& value, const std::string& context )
+{
+    if ( !value.is_boolean() )
+    {
+        throw std::runtime_error( context + ": expected boolean" );
+    }
+
+    return value.get<bool>();
+}
+
 Vec2 parseVec2( const Json& value, const std::string& context )
 {
     if ( !value.is_array() || value.size() != 2 )
@@ -295,6 +305,34 @@ BlockData parseBlock( const Json& value, std::size_t index )
     if ( block.hp <= 0.0f )
     {
         throw std::runtime_error( context + ".hp: expected value > 0" );
+    }
+
+    if ( const auto it = value.find( "static" ); it != value.end() )
+    {
+        block.isStatic = requireBool( *it, context + ".static" );
+    }
+    else if ( const auto it = value.find( "isStatic" ); it != value.end() )
+    {
+        block.isStatic = requireBool( *it, context + ".isStatic" );
+    }
+
+    if ( const auto it = value.find( "indestructible" ); it != value.end() )
+    {
+        block.isIndestructible = requireBool( *it, context + ".indestructible" );
+    }
+    else if ( const auto it = value.find( "isIndestructible" ); it != value.end() )
+    {
+        block.isIndestructible = requireBool( *it, context + ".isIndestructible" );
+    }
+
+    // Nondestructible blocks in this project are treated as fully static obstacles.
+    if ( block.isIndestructible )
+    {
+        block.isStatic = true;
+    }
+    if ( block.isStatic )
+    {
+        block.isIndestructible = true;
     }
 
     const std::string shape =
