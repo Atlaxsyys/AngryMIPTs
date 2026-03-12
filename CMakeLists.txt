@@ -69,6 +69,7 @@ add_library(angry_data
     src/data/logger.cpp
     src/data/score_saver.cpp
     src/data/OnlineScoreClient.cpp
+    src/data/session_manager.cpp
 )
 target_include_directories(angry_data PUBLIC src)
 if(TARGET nlohmann_json::nlohmann_json)
