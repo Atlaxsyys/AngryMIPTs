@@ -16,7 +16,7 @@ struct LeaderboardEntry
 class OnlineScoreClient
 {
 public:
-    explicit OnlineScoreClient(std::string baseUrl = "http://84.201.138.107:8080");
+    explicit OnlineScoreClient(std::string baseUrl = "");
 
     bool submitScore(const std::string& playerName, int levelId, int score, int stars);
     std::vector<LeaderboardEntry> fetchLeaderboard(int levelId);

@@ -5,6 +5,7 @@
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 
 namespace angry
@@ -18,6 +19,24 @@ namespace
 constexpr int kBackendTimeoutMs = 3000;
 constexpr int kBackendMaxAttempts = 3;
 constexpr int kBackendRetryDelayMs = 220;
+constexpr const char* kDefaultBackendUrl = "http://84.201.138.107:8080";
+constexpr const char* kBackendUrlEnvVar = "ANGRY_BACKEND_URL";
+
+std::string resolveBackendUrl( std::string baseUrl )
+{
+    if ( !baseUrl.empty() )
+    {
+        return baseUrl;
+    }
+
+    const char* envUrl = std::getenv( kBackendUrlEnvVar );
+    if ( envUrl != nullptr && envUrl[0] != '\0' )
+    {
+        return std::string( envUrl );
+    }
+
+    return std::string( kDefaultBackendUrl );
+}
 
 bool isHttpOk( long statusCode )
 {
@@ -88,8 +107,9 @@ cpr::Response performRequestWithRetry( const char* opName, RequestFn&& requestFn
 }  // namespace
 
 OnlineScoreClient::OnlineScoreClient(std::string baseUrl)
-    : baseUrl_(std::move(baseUrl))
+    : baseUrl_( resolveBackendUrl( std::move( baseUrl ) ) )
 {
+    Logger::info( "OnlineScoreClient backend URL: {}", baseUrl_ );
 }
 
 bool OnlineScoreClient::submitScore(
