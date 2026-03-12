@@ -65,6 +65,7 @@ include(GoogleTest)
 
 # Data library (C)
 add_library(angry_data
+    src/data/account_service.cpp
     src/data/auth_client.cpp
     src/data/level_loader.cpp
     src/data/logger.cpp
@@ -178,3 +179,15 @@ target_link_libraries(angry_auth_client_tests PRIVATE
     GTest::gtest_main
 )
 gtest_discover_tests(angry_auth_client_tests)
+
+# Data account service tests (no UI dependency)
+add_executable(angry_account_service_tests
+    tests/account_service_tests.cpp
+)
+target_include_directories(angry_account_service_tests PRIVATE src)
+target_link_libraries(angry_account_service_tests PRIVATE
+    angry_data
+    GTest::gtest
+    GTest::gtest_main
+)
+gtest_discover_tests(angry_account_service_tests)
