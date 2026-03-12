@@ -166,3 +166,15 @@ target_link_libraries(angry_session_manager_tests PRIVATE
     GTest::gtest_main
 )
 gtest_discover_tests(angry_session_manager_tests)
+
+# Data auth client tests (no UI dependency)
+add_executable(angry_auth_client_tests
+    tests/auth_client_tests.cpp
+)
+target_include_directories(angry_auth_client_tests PRIVATE src)
+target_link_libraries(angry_auth_client_tests PRIVATE
+    angry_data
+    GTest::gtest
+    GTest::gtest_main
+)
+gtest_discover_tests(angry_auth_client_tests)
