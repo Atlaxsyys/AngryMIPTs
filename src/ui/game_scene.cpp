@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
-#include <thread>
 
 namespace angry
 {
@@ -680,19 +679,12 @@ void GameScene::load_level ( int level_id, const std::string& scores_path )
         const LevelData level = level_loader_.load ( path );
         physics_.registerLevel ( level );
         physics_.loadLevel ( level );
-        // In threaded mode the LoadLevelCmd is queued; poll until the snapshot
-        // contains objects so we don't render an empty world on first frame.
         if ( physics_.mode() == PhysicsMode::Threaded )
         {
-            const auto deadline = std::chrono::steady_clock::now()
-                                  + std::chrono::milliseconds ( 500 );
-            while ( std::chrono::steady_clock::now() < deadline )
-            {
-                snapshot_ = physics_.getSnapshot();
-                if ( !snapshot_.objects.empty() )
-                    break;
-                std::this_thread::sleep_for ( std::chrono::milliseconds ( 4 ) );
-            }
+            // Avoid blocking main thread while worker applies LoadLevelCmd.
+            // Snapshot will be refreshed in update() on next ticks.
+            snapshot_ = WorldSnapshot {};
+            snapshot_.status = LevelStatus::Running;
         }
         else
         {
