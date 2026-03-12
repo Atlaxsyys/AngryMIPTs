@@ -269,17 +269,17 @@ void PhysicsEngine::step(float dt)
     const auto start = std::chrono::steady_clock::now();
     const LevelStatus statusBeforeStep = snapshot_.status;
 
-    if (!levelLoaded_ || B2_IS_NULL(worldId_))
-    {
-        snapshot_.physicsStepMs = 0.0f;
-        return;
-    }
-
     for (const Command& cmd : pendingCommands_)
     {
         applyCommand(cmd);
     }
     pendingCommands_.clear();
+
+    if (!levelLoaded_ || B2_IS_NULL(worldId_))
+    {
+        snapshot_.physicsStepMs = 0.0f;
+        return;
+    }
 
     if (paused_ || snapshot_.status != LevelStatus::Running)
     {

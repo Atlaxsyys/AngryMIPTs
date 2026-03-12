@@ -1,7 +1,7 @@
 #pragma once
 #include "data/level_loader.hpp"
 #include "data/score_saver.hpp"
-#include "physics/physics_engine.hpp"
+#include "physics/physics_runtime.hpp"
 #include "render/particles.hpp"
 #include "render/renderer.hpp"
 #include "render/sfx_player.hpp"
@@ -59,7 +59,7 @@ private:
     SfxPlayer sfx_;
     Slingshot slingshot_;
     ParticleSystem particles_;
-    PhysicsEngine physics_;
+    PhysicsRuntime physics_;
     ThreadSafeQueue<Command> command_queue_;
     LevelLoader level_loader_;
     ScoreSaver score_saver_;

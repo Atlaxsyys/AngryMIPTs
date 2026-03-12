@@ -3,10 +3,12 @@
 #include "data/logger.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <thread>
 
 namespace angry
 {
@@ -572,6 +574,7 @@ WorldSnapshot GameScene::make_mock_snapshot()
 
 GameScene::GameScene ( const sf::Font& font )
     : snapshot_ ( make_mock_snapshot() )
+    , physics_ ( PhysicsMode::Threaded )
     , font_ ( font )
     , hud_text_ ( font_, "", 20 )
     , game_view_ ( sf::FloatRect ( {0.f, 0.f}, {kCameraWidth, kCameraHeight} ) )
@@ -677,7 +680,24 @@ void GameScene::load_level ( int level_id, const std::string& scores_path )
         const LevelData level = level_loader_.load ( path );
         physics_.registerLevel ( level );
         physics_.loadLevel ( level );
-        snapshot_ = physics_.getSnapshot();
+        // In threaded mode the LoadLevelCmd is queued; poll until the snapshot
+        // contains objects so we don't render an empty world on first frame.
+        if ( physics_.mode() == PhysicsMode::Threaded )
+        {
+            const auto deadline = std::chrono::steady_clock::now()
+                                  + std::chrono::milliseconds ( 500 );
+            while ( std::chrono::steady_clock::now() < deadline )
+            {
+                snapshot_ = physics_.getSnapshot();
+                if ( !snapshot_.objects.empty() )
+                    break;
+                std::this_thread::sleep_for ( std::chrono::milliseconds ( 4 ) );
+            }
+        }
+        else
+        {
+            snapshot_ = physics_.getSnapshot();
+        }
         frame_clock_.restart();
         Logger::info ( "GameScene: loaded level {}", level_id );
     }
