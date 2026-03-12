@@ -685,6 +685,8 @@ void GameScene::load_level ( int level_id, const std::string& scores_path )
     smoothed_fps_ = 60.0f;
     vfx_load_factor_ = 1.0f;
     render_targets_dirty_ = true;
+    pending_result_token_ = 0;
+    leaderboard_applied_ = true;
 
     try
     {
@@ -724,6 +726,8 @@ void GameScene::finish_level()
     const int stars = std::clamp ( snapshot_.stars, 0, 3 );
 
     last_result_ = { won, score, stars, {} };
+    leaderboard_applied_ = !won;
+    pending_result_token_ = 0;
 
     if ( won && level_id_ > 0 )
     {
@@ -739,25 +743,77 @@ void GameScene::finish_level()
             }
         }
 
-        try
-        {
-            const bool submit_ok = online_score_client_.submitScore (
-                player_name_, level_id_, score, stars );
-            if ( !submit_ok )
-            {
-                Logger::info ( "GameScene: backend submit failed, keeping local result only" );
-            }
+        const std::uint64_t token = ++leaderboard_request_token_;
+        pending_result_token_ = token;
+        const std::shared_ptr<LeaderboardAsyncState> async_state = leaderboard_async_state_;
+        const std::string player_name = player_name_;
+        const int level_id = level_id_;
+        const int score_value = score;
+        const int stars_value = stars;
+        OnlineScoreClient client = online_score_client_;
 
-            last_result_.leaderboard = online_score_client_.fetchLeaderboard ( level_id_ );
-        }
-        catch ( const std::exception& e )
-        {
-            Logger::error ( "GameScene: failed to sync leaderboard: {}", e.what() );
-            last_result_.leaderboard.clear();
-        }
+        std::thread (
+            [async_state, token, client = std::move ( client ),
+             player_name = std::move ( player_name ),
+             level_id, score_value, stars_value]() mutable
+            {
+                std::vector<LeaderboardEntry> leaderboard;
+
+                try
+                {
+                    const bool submit_ok = client.submitScore (
+                        player_name, level_id, score_value, stars_value );
+                    if ( submit_ok )
+                    {
+                        leaderboard = client.fetchLeaderboard ( level_id );
+                    }
+                    else
+                    {
+                        Logger::info (
+                            "GameScene: backend submit failed, keeping local result only" );
+                    }
+                }
+                catch ( const std::exception& e )
+                {
+                    Logger::error ( "GameScene: failed to sync leaderboard: {}", e.what() );
+                    leaderboard.clear();
+                }
+
+                std::lock_guard<std::mutex> lock ( async_state->mutex );
+                if ( token >= async_state->ready_token )
+                {
+                    async_state->ready_token = token;
+                    async_state->ready_entries = std::move ( leaderboard );
+                    async_state->ready = true;
+                }
+            } ).detach();
     }
 
     pending_scene_ = SceneId::Result;
+}
+
+bool GameScene::poll_result_update()
+{
+    if ( leaderboard_applied_ || pending_result_token_ == 0 )
+        return false;
+
+    std::lock_guard<std::mutex> lock ( leaderboard_async_state_->mutex );
+    if ( !leaderboard_async_state_->ready
+         || leaderboard_async_state_->ready_token != pending_result_token_ )
+    {
+        return false;
+    }
+
+    if ( leaderboard_async_state_->ready_entries.empty()
+         && last_result_.leaderboard.empty() )
+    {
+        leaderboard_applied_ = true;
+        return false;
+    }
+
+    last_result_.leaderboard = leaderboard_async_state_->ready_entries;
+    leaderboard_applied_ = true;
+    return true;
 }
 
 void GameScene::process_events()

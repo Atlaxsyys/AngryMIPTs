@@ -15,7 +15,11 @@
 #include "ui/slingshot.hpp"
 
 #include <deque>
+#include <cstdint>
+#include <memory>
+#include <mutex>
 #include <random>
+#include <thread>
 #include <vector>
 
 namespace angry
@@ -78,6 +82,19 @@ private:
     int level_id_ = -1;
     std::string scores_path_;
     std::string player_name_ = "Player";
+
+    struct LeaderboardAsyncState
+    {
+        std::mutex mutex;
+        std::uint64_t ready_token = 0;
+        std::vector<LeaderboardEntry> ready_entries;
+        bool ready = false;
+    };
+    std::shared_ptr<LeaderboardAsyncState> leaderboard_async_state_ =
+        std::make_shared<LeaderboardAsyncState>();
+    std::uint64_t leaderboard_request_token_ = 0;
+    std::uint64_t pending_result_token_ = 0;
+    bool leaderboard_applied_ = true;
     sf::View game_view_;
     sf::RenderWindow* window_ptr_ = nullptr;
     sf::RenderTexture world_pass_;
@@ -119,6 +136,7 @@ public:
     void load_level ( int level_id, const std::string& scores_path = "" );
     void retry();
     void notify_window_recreated();
+    bool poll_result_update();
 
     SceneId handle_input ( const sf::Event& event ) override;
     void update() override;
