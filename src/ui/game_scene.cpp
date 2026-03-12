@@ -723,17 +723,37 @@ void GameScene::finish_level()
     const int score = snapshot_.score;
     const int stars = std::clamp ( snapshot_.stars, 0, 3 );
 
-    last_result_ = { won, score, stars };
+    last_result_ = { won, score, stars, {} };
 
-    if ( won && !scores_path_.empty() && level_id_ > 0 )
+    if ( won && level_id_ > 0 )
     {
+        if ( !scores_path_.empty() )
+        {
+            try
+            {
+                score_saver_.saveScore ( scores_path_, level_id_, score, stars );
+            }
+            catch ( const std::exception& e )
+            {
+                Logger::error ( "GameScene: failed to save score: {}", e.what() );
+            }
+        }
+
         try
         {
-            score_saver_.saveScore ( scores_path_, level_id_, score, stars );
+            const bool submit_ok = online_score_client_.submitScore (
+                player_name_, level_id_, score, stars );
+            if ( !submit_ok )
+            {
+                Logger::info ( "GameScene: backend submit failed, keeping local result only" );
+            }
+
+            last_result_.leaderboard = online_score_client_.fetchLeaderboard ( level_id_ );
         }
         catch ( const std::exception& e )
         {
-            Logger::error ( "GameScene: failed to save score: {}", e.what() );
+            Logger::error ( "GameScene: failed to sync leaderboard: {}", e.what() );
+            last_result_.leaderboard.clear();
         }
     }
 

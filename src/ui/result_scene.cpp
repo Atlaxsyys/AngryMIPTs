@@ -41,11 +41,15 @@ ResultScene::ResultScene ( const sf::Font& font )
     , title_ ( font_, "", 48 )
     , score_text_ ( font_, "", 28 )
     , status_note_ ( font_, "", 18 )
+    , leaderboard_title_ ( font_, "Top leaderboard", 22 )
+    , leaderboard_empty_ ( font_, "", 18 )
     , prompt_ ( font_, "[Enter] Retry   [Backspace] Menu", 20 )
 {
     title_.setFillColor ( sf::Color::White );
     score_text_.setFillColor ( sf::Color::White );
     status_note_.setFillColor ( sf::Color ( 230, 245, 255 ) );
+    leaderboard_title_.setFillColor ( sf::Color ( 224, 240, 255 ) );
+    leaderboard_empty_.setFillColor ( sf::Color ( 196, 214, 232 ) );
     prompt_.setFillColor ( sf::Color ( 230, 245, 255 ) );
 }
 
@@ -58,9 +62,19 @@ void ResultScene::set_result ( const LevelResult& result )
     title_.setFillColor ( result_.win ? sf::Color ( 50, 200, 50 ) : sf::Color ( 200, 50, 50 ) );
 
     score_text_.setString ( "Score: " + std::to_string ( result_.score ) );
-    status_note_.setString ( result_.win
-        ? "Result saved to leaderboard."
-        : "Level not completed: stars are not saved." );
+    if ( result_.win )
+    {
+        status_note_.setString ( result_.leaderboard.empty()
+            ? "Result saved locally. Leaderboard unavailable."
+            : "Result saved to leaderboard." );
+    }
+    else
+    {
+        status_note_.setString ( "Level not completed: stars are not saved." );
+    }
+    leaderboard_empty_.setString ( result_.win
+        ? "Leaderboard unavailable"
+        : "No data" );
 }
 
 SceneId ResultScene::handle_input ( const sf::Event& event )
@@ -98,7 +112,7 @@ void ResultScene::render ( sf::RenderWindow& window )
                                     : sf::Color ( 255, 162, 176, 36 ) );
     window.draw ( glow );
 
-    sf::RectangleShape panel ( {ws.x * 0.52f, ws.y * 0.52f} );
+    sf::RectangleShape panel ( {ws.x * 0.52f, ws.y * 0.70f} );
     panel.setOrigin ( {panel.getSize().x * 0.5f, panel.getSize().y * 0.5f} );
     panel.setPosition ( {ws.x * 0.5f, ws.y * 0.47f} );
     panel.setFillColor ( sf::Color ( 10, 15, 30, 145 ) );
@@ -205,11 +219,38 @@ void ResultScene::render ( sf::RenderWindow& window )
 
     center_text ( score_text_, ws.y * 0.57f );
     center_text ( status_note_, ws.y * 0.63f );
-    center_text ( prompt_, ws.y * 0.69f );
+    center_text ( leaderboard_title_, ws.y * 0.70f );
+    center_text ( prompt_, ws.y * 0.84f );
 
     window.draw ( title_ );
     window.draw ( score_text_ );
     window.draw ( status_note_ );
+    window.draw ( leaderboard_title_ );
+
+    if ( result_.leaderboard.empty() )
+    {
+        center_text ( leaderboard_empty_, ws.y * 0.76f );
+        window.draw ( leaderboard_empty_ );
+    }
+    else
+    {
+        const std::size_t max_rows = std::min<std::size_t> ( 5u, result_.leaderboard.size() );
+        for ( std::size_t i = 0; i < max_rows; ++i )
+        {
+            const LeaderboardEntry& entry = result_.leaderboard[i];
+            const std::string name = entry.playerName.empty() ? "Player" : entry.playerName;
+            const std::string row_text =
+                std::to_string ( static_cast<int> ( i + 1u ) ) + ". " + name
+                + "   score: " + std::to_string ( entry.score )
+                + "   stars: " + std::to_string ( std::clamp ( entry.stars, 0, 3 ) );
+
+            sf::Text row ( font_, row_text, 18 );
+            row.setFillColor ( sf::Color ( 224, 240, 255 ) );
+            center_text ( row, ws.y * ( 0.75f + static_cast<float> ( i ) * 0.042f ) );
+            window.draw ( row );
+        }
+    }
+
     window.draw ( prompt_ );
 }
 

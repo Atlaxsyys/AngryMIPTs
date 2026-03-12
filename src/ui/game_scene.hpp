@@ -1,5 +1,6 @@
 #pragma once
 #include "data/level_loader.hpp"
+#include "data/OnlineScoreClient.hpp"
 #include "data/score_saver.hpp"
 #include "physics/physics_runtime.hpp"
 #include "render/particles.hpp"
@@ -64,6 +65,7 @@ private:
     PhysicsRuntime physics_;
     ThreadSafeQueue<Command> command_queue_;
     LevelLoader level_loader_;
+    OnlineScoreClient online_score_client_;
     ScoreSaver score_saver_;
     WorldSnapshot snapshot_;
     sf::Font font_;
@@ -75,6 +77,7 @@ private:
     float end_delay_ = 0.f;
     int level_id_ = -1;
     std::string scores_path_;
+    std::string player_name_ = "Player";
     sf::View game_view_;
     sf::RenderWindow* window_ptr_ = nullptr;
     sf::RenderTexture world_pass_;
