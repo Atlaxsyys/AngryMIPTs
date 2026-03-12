@@ -156,6 +156,58 @@ bool OnlineScoreClient::submitScore(
     return true;
 }
 
+bool OnlineScoreClient::submitScoreWithToken(
+    const std::string& token,
+    int levelId,
+    int score,
+    int stars)
+{
+    if ( token.empty() )
+    {
+        Logger::info( "User is not logged in, skipping online score submission" );
+        return false;
+    }
+
+    Logger::info( "Submitting score with token" );
+
+    const json body = {
+        {"levelId", levelId},
+        {"score", score},
+        {"stars", stars},
+    };
+
+    const cpr::Response response = performRequestWithRetry(
+        "submitScoreWithToken",
+        [&]()
+        {
+            return cpr::Post(
+                cpr::Url{baseUrl_ + "/scores"},
+                cpr::Header{
+                    {"Content-Type", "application/json"},
+                    {"Authorization", "Bearer " + token},
+                },
+                cpr::Body{body.dump()},
+                cpr::Timeout{kBackendTimeoutMs});
+        });
+
+    if ( response.error.code != cpr::ErrorCode::OK )
+    {
+        Logger::error( "OnlineScoreClient::submitScoreWithToken failed after retries." );
+        return false;
+    }
+
+    if ( !isHttpOk( response.status_code ) )
+    {
+        Logger::error(
+            "OnlineScoreClient::submitScoreWithToken failed: final http status={}",
+            response.status_code );
+        return false;
+    }
+
+    Logger::info( "OnlineScoreClient::submitScoreWithToken success." );
+    return true;
+}
+
 LeaderboardFetchResult OnlineScoreClient::fetchLeaderboardWithStatus(int levelId)
 {
     LeaderboardFetchResult result;
