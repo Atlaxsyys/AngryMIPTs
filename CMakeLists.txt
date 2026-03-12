@@ -65,6 +65,7 @@ include(GoogleTest)
 
 # Data library (C)
 add_library(angry_data
+    src/data/auth_client.cpp
     src/data/level_loader.cpp
     src/data/logger.cpp
     src/data/score_saver.cpp
