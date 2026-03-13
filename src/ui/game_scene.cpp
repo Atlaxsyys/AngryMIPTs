@@ -835,7 +835,43 @@ void GameScene::finish_level()
                 }
             } ).detach();
 #else
-        // Web: no threads — leaderboard stays Unavailable
+        // Web: no worker threads, so run backend sync inline.
+        try
+        {
+            LeaderboardFetchResult fetch_result;
+
+            if ( won )
+            {
+                const std::string auth_token = accounts_ ? accounts_->token() : std::string {};
+                Logger::info (
+                    "GameScene(web): submitting score levelId={} score={} stars={} token={}",
+                    level_id_, score, stars,
+                    auth_token.empty() ? "(none)" : auth_token.substr ( 0, 12 ) + "..." );
+                const bool submit_ok = online_score_client_.submitScoreWithToken (
+                    auth_token, level_id_, score, stars );
+                if ( !submit_ok )
+                {
+                    Logger::info ( "GameScene(web): backend submit failed, still fetching leaderboard" );
+                }
+            }
+
+            Logger::info ( "GameScene(web): fetching leaderboard for levelId={}", level_id_ );
+            fetch_result = online_score_client_.fetchLeaderboardWithStatus ( level_id_ );
+            Logger::info (
+                "GameScene(web): leaderboard for levelId={} has {} entries, status={}",
+                level_id_, fetch_result.entries.size(),
+                static_cast<int> ( fetch_result.status ) );
+
+            last_result_.leaderboard  = std::move ( fetch_result.entries );
+            last_result_.fetch_status = fetch_result.status;
+        }
+        catch ( const std::exception& e )
+        {
+            Logger::error ( "GameScene(web): failed to sync leaderboard: {}", e.what() );
+            last_result_.leaderboard.clear();
+            last_result_.fetch_status = LeaderboardFetchStatus::Unavailable;
+        }
+
         leaderboard_applied_ = true;
 #endif
     }

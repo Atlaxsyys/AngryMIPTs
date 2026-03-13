@@ -86,10 +86,23 @@ void LevelSelectScene::fetch_preview ( int level_id )
         state->entries          = std::move ( r.entries );
     } ).detach();
 #else
-    // On web: no threads. Mark as unavailable immediately.
+    // On web: fetch synchronously (no worker threads in wasm build).
+    LeaderboardFetchResult r;
+    try
+    {
+        OnlineScoreClient client;
+        r = client.fetchLeaderboardWithStatus ( level_id );
+    }
+    catch ( const std::exception& e )
+    {
+        Logger::error ( "LevelSelectScene: failed to fetch leaderboard preview: {}", e.what() );
+        r = {};
+    }
+
     std::lock_guard<std::mutex> lock ( preview_->mutex );
     preview_->fetched_level_id = level_id;
-    preview_->fetch_status     = LeaderboardFetchStatus::Unavailable;
+    preview_->fetch_status     = r.status;
+    preview_->entries          = std::move ( r.entries );
 #endif
 }
 
