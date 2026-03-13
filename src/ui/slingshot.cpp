@@ -193,34 +193,43 @@ void Slingshot::render ( platform::RenderTarget& target, const SlingshotState& s
         }
     }
 
-#else  // __EMSCRIPTEN__ — Raylib draw
+#else  // __EMSCRIPTEN__ — use platform::draw so world_to_screen is applied
+
+    // Bands — drawn via platform Vertex/Lines so the View transform is respected
+    auto draw_band = [&]( platform::Vec2f a, platform::Vec2f b )
+    {
+        platform::Vertex verts[2] = { {a, band_color}, {b, band_color} };
+        target.draw( verts, 2, sf::PrimitiveType::Lines );
+    };
 
     if ( dragging_ )
     {
-        DrawLineV( {left_prong.x,  left_prong.y},  {ball_pos.x, ball_pos.y}, band_color.to_rl() );
-        DrawLineV( {right_prong.x, right_prong.y}, {ball_pos.x, ball_pos.y}, band_color.to_rl() );
+        draw_band( left_prong,  ball_pos );
+        draw_band( right_prong, ball_pos );
     }
     else
     {
-        DrawLineV( {left_prong.x,  left_prong.y},  {left_prong.x,  left_prong.y  + 6.f}, band_color.to_rl() );
-        DrawLineV( {left_prong.x,  left_prong.y + 6.f}, {ball_pos.x, ball_pos.y}, band_color.to_rl() );
-        DrawLineV( {right_prong.x, right_prong.y}, {right_prong.x, right_prong.y + 6.f}, band_color.to_rl() );
-        DrawLineV( {right_prong.x, right_prong.y + 6.f}, {ball_pos.x, ball_pos.y}, band_color.to_rl() );
+        platform::Vec2f sag { 0.f, 6.f };
+        platform::Vertex bl[3] = { {left_prong,          band_color},
+                                   {left_prong  + sag,   band_color},
+                                   {ball_pos,             band_color} };
+        platform::Vertex br[3] = { {right_prong,         band_color},
+                                   {right_prong + sag,   band_color},
+                                   {ball_pos,             band_color} };
+        target.draw( bl, 3, sf::PrimitiveType::LineStrip );
+        target.draw( br, 3, sf::PrimitiveType::LineStrip );
     }
 
-    // Bird
-    if ( projectile_tex.loaded )
+    // Bird — Sprite so world_to_screen handles position
     {
-        const auto ts = projectile_tex.getSize();
-        const float scale = ball_r * 2.f / static_cast<float>( std::max( ts.x, ts.y ) );
-        ::Rectangle src { 0.f, 0.f, float(ts.x), float(ts.y) };
-        ::Rectangle dst { ball_pos.x - ball_r, ball_pos.y - ball_r,
-                          float(ts.x) * scale, float(ts.y) * scale };
-        DrawTexturePro( projectile_tex.rl, src, dst, {ball_r, ball_r}, 0.f, WHITE );
-    }
-    else
-    {
-        DrawCircle( int(ball_pos.x), int(ball_pos.y), ball_r, {220, 100, 50, 255} );
+        const auto  ts    = projectile_tex.getSize();
+        const float sc    = ball_r * 2.f / static_cast<float>( std::max( ts.x, ts.y ) );
+        platform::Sprite bird( projectile_tex );
+        bird.setOrigin( { static_cast<float>( ts.x ) * 0.5f,
+                          static_cast<float>( ts.y ) * 0.5f } );
+        bird.setPosition( ball_pos );
+        bird.setScale( { sc, sc } );
+        target.draw( bird );
     }
 
     if ( dragging_ )
@@ -229,7 +238,13 @@ void Slingshot::render ( platform::RenderTarget& target, const SlingshotState& s
         platform::Vec2f launch_vel { pull.x * 4.5f, pull.y * 4.5f };
         auto            points     = calc_trajectory( launch_vel, base, 60 );
         for ( const auto& pt : points )
-            DrawCircle( int(pt.x), int(pt.y), 2.f, {255, 255, 255, 120} );
+        {
+            platform::CircleShape dot( 2.f );
+            dot.setOrigin( { 2.f, 2.f } );
+            dot.setPosition( pt );
+            dot.setFillColor( platform::Color( 255, 255, 255, 120 ) );
+            target.draw( dot );
+        }
     }
 
 #endif

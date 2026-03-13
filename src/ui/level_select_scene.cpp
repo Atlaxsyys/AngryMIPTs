@@ -703,7 +703,7 @@ void LevelSelectScene::render ( platform::Window& window )
 
     // Left panel
     DrawRectangle(int(margin),int(panel_top),int(left_w),int(panel_h),
-                  platform::Color(8,16,30,138).to_rl());
+                  platform::Color(8,16,30,255).to_rl());
     DrawRectangleLinesEx({margin,panel_top,left_w,panel_h},2.5f,
                          platform::Color(188,220,244,128).to_rl());
 
@@ -749,7 +749,7 @@ void LevelSelectScene::render ( platform::Window& window )
 
     // Right panel
     DrawRectangle(int(right_x),int(panel_top),int(right_w),int(panel_h),
-                  platform::Color(8,14,26,148).to_rl());
+                  platform::Color(8,14,26,255).to_rl());
     DrawRectangleLinesEx({right_x,panel_top,right_w,panel_h},2.f,
                          platform::Color(80,140,220,110).to_rl());
 
@@ -829,7 +829,7 @@ void LevelSelectScene::render ( platform::Window& window )
     const float badge_right = W - 14.f, badge_top2 = 10.f;
     const float pill_w = 268.f, pill_h = 50.f;
     DrawRectangle(int(badge_right-pill_w),int(badge_top2),int(pill_w),int(pill_h),
-                  platform::Color(10,18,36,200).to_rl());
+                  platform::Color(10,18,36,255).to_rl());
     DrawRectangleLinesEx({badge_right-pill_w,badge_top2,pill_w,pill_h},1.5f,
                          platform::Color(80,140,220,110).to_rl());
     rect_badge_ = {badge_right-pill_w,badge_top2,pill_w,pill_h};

@@ -15,6 +15,10 @@ include(FetchContent)
 if(EMSCRIPTEN)
     # Web build: Raylib (replaces SFML)
     set(PLATFORM Web CACHE STRING "" FORCE)
+    # Use OpenGL ES 3.0 / WebGL 2 — avoids glVertexAttribIPointer warnings that
+    # appear with the ES2 backend when rlgl tries to bind integer vertex attributes
+    # not present in Raylib's default 2D shader.
+    set(OPENGL_VERSION "ES 3.0" CACHE STRING "" FORCE)
     FetchContent_Declare(
         raylib
         URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz

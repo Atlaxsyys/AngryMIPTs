@@ -7,7 +7,6 @@
 // ============================================================
 
 #include <raylib.h>
-#include <rlgl.h>
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -608,18 +607,26 @@ struct Sound
 
 inline void draw_colored_triangle( const Vertex& a, const Vertex& b, const Vertex& c )
 {
-    // Use Raylib's rlgl batch system with the correct 2D projection matrix.
-    // rlBegin/rlVertex2f operate in the current matrix space (screen pixels in
-    // Raylib's default 2D mode), so this produces correct screen-space triangles
-    // with per-vertex colour interpolation (gradient support).
-    rlBegin( RL_TRIANGLES );
-        rlColor4ub( a.color.r, a.color.g, a.color.b, a.color.a );
-        rlVertex2f( a.position.x, a.position.y );
-        rlColor4ub( b.color.r, b.color.g, b.color.b, b.color.a );
-        rlVertex2f( b.position.x, b.position.y );
-        rlColor4ub( c.color.r, c.color.g, c.color.b, c.color.a );
-        rlVertex2f( c.position.x, c.position.y );
-    rlEnd();
+    // DrawTriangle requires CCW winding in screen space (Y-down).
+    // Average the three vertex colours — WebGL 1 doesn't support per-vertex
+    // colour interpolation without a custom shader, and rlBegin/rlEnd nested
+    // inside BeginDrawing() causes MAX_VERTEX_ATTRIBS spam on Emscripten.
+    const ::Color avg {
+        static_cast<uint8_t>( ( int(a.color.r) + b.color.r + c.color.r ) / 3 ),
+        static_cast<uint8_t>( ( int(a.color.g) + b.color.g + c.color.g ) / 3 ),
+        static_cast<uint8_t>( ( int(a.color.b) + b.color.b + c.color.b ) / 3 ),
+        static_cast<uint8_t>( ( int(a.color.a) + b.color.a + c.color.a ) / 3 ),
+    };
+    const Vector2 pa { a.position.x, a.position.y };
+    const Vector2 pb { b.position.x, b.position.y };
+    const Vector2 pc { c.position.x, c.position.y };
+    // Determine winding; flip if CW so DrawTriangle always gets CCW.
+    const float cross = ( pb.x - pa.x ) * ( pc.y - pa.y )
+                      - ( pb.y - pa.y ) * ( pc.x - pa.x );
+    if ( cross >= 0.f )
+        DrawTriangle( pa, pb, pc, avg );
+    else
+        DrawTriangle( pa, pc, pb, avg );
 }
 
 inline Rect viewport_pixels( const Window& window, const View& view )
