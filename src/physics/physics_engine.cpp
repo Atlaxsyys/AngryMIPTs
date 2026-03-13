@@ -6,7 +6,9 @@
 #include <box2d/box2d.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <unordered_map>
 #include <unordered_set>
@@ -25,6 +27,7 @@ constexpr float kProjectileSleepAngularSpeedRad = 1.2f;
 constexpr int kProjectileSettledFramesNeeded = 15;
 constexpr float kProjectileSettledRemoveDelaySec = 1.5f;
 constexpr float kDamageMinSpeedMps = 1.0f;
+constexpr float kCollisionEventMinSpeedMps = 0.7f;
 constexpr float kDamageScale = 16.0f;
 constexpr float kBlockVsBlockDamageMultiplier = 0.15f;
 constexpr float kFloorImpactDamageMultiplier = 0.75f;
@@ -64,6 +67,13 @@ inline bool isOutOfBoundsPx(const Vec2& positionPx)
 inline bool bodyIdEquals(b2BodyId a, b2BodyId b)
 {
     return B2_ID_EQUALS(a, b);
+}
+
+inline std::uint64_t bodyIdKey(b2BodyId id)
+{
+    return (static_cast<std::uint64_t>(id.world0) << 48)
+        ^ (static_cast<std::uint64_t>(id.revision) << 32)
+        ^ static_cast<std::uint64_t>(id.index1);
 }
 
 inline Vec2 rotatePxVector(const Vec2& v, float angleRad)
@@ -191,14 +201,17 @@ inline int calculateStarsForResult(
 
 inline bool isBodyOnSurface(b2BodyId bodyId)
 {
-    const int contactCapacity = b2Body_GetContactCapacity(bodyId);
-    if (contactCapacity <= 0)
+    if (b2Body_GetContactCapacity(bodyId) <= 0)
     {
         return false;
     }
 
-    std::vector<b2ContactData> contacts(static_cast<size_t>(contactCapacity));
-    const int contactCount = b2Body_GetContactData(bodyId, contacts.data(), contactCapacity);
+    // Avoid per-frame heap allocations in hot physics loop.
+    std::array<b2ContactData, 8> contacts{};
+    const int contactCount = b2Body_GetContactData(
+        bodyId,
+        contacts.data(),
+        static_cast<int>(contacts.size()));
     for (int i = 0; i < contactCount; ++i)
     {
         if (contacts[static_cast<size_t>(i)].manifold.pointCount > 0)
@@ -526,14 +539,39 @@ void PhysicsEngine::step(float dt)
 
     // Apply damage from contact hit events and remove destroyed bodies.
     const b2ContactEvents contactEvents = b2World_GetContactEvents(worldId_);
+    std::unordered_map<std::uint64_t, BodyBinding*> bindingByBodyId;
+    bindingByBodyId.reserve(bodies_.size());
+    for (BodyBinding& binding : bodies_)
+    {
+        if (B2_IS_NON_NULL(binding.bodyId))
+        {
+            bindingByBodyId[bodyIdKey(binding.bodyId)] = &binding;
+        }
+    }
+
     std::unordered_map<EntityId, float> pendingDamageById;
+    if (contactEvents.hitCount > 0)
+    {
+        pendingDamageById.reserve(static_cast<std::size_t>(contactEvents.hitCount));
+    }
     for (int i = 0; i < contactEvents.hitCount; ++i)
     {
         const b2ContactHitEvent& hit = contactEvents.hitEvents[static_cast<size_t>(i)];
         const b2BodyId bodyA = b2Shape_GetBody(hit.shapeIdA);
         const b2BodyId bodyB = b2Shape_GetBody(hit.shapeIdB);
-        BodyBinding* bindingA = findBinding(bodyA);
-        BodyBinding* bindingB = findBinding(bodyB);
+        BodyBinding* bindingA = nullptr;
+        BodyBinding* bindingB = nullptr;
+
+        const auto itA = bindingByBodyId.find(bodyIdKey(bodyA));
+        if (itA != bindingByBodyId.end())
+        {
+            bindingA = itA->second;
+        }
+        const auto itB = bindingByBodyId.find(bodyIdKey(bodyB));
+        if (itB != bindingByBodyId.end())
+        {
+            bindingB = itB->second;
+        }
 
         const bool onlyAKnown = bindingA != nullptr && bindingB == nullptr;
         const bool onlyBKnown = bindingA == nullptr && bindingB != nullptr;
@@ -585,11 +623,14 @@ void PhysicsEngine::step(float dt)
             continue;
         }
 
-        events_.push_back(CollisionEvent{
-            bindingA->id,
-            bindingB->id,
-            hit.approachSpeed,
-            worldToPx({hit.point.x, hit.point.y})});
+        if (hit.approachSpeed >= kCollisionEventMinSpeedMps)
+        {
+            events_.push_back(CollisionEvent{
+                bindingA->id,
+                bindingB->id,
+                hit.approachSpeed,
+                worldToPx({hit.point.x, hit.point.y})});
+        }
 
         const float effectiveSpeed = std::max(0.0f, hit.approachSpeed - kDamageMinSpeedMps);
         if (effectiveSpeed <= 0.0f)
@@ -718,7 +759,18 @@ void PhysicsEngine::step(float dt)
         {
             continue;
         }
-        if (!b2Body_IsAwake(binding.bodyId) || !isBodyOnSurface(binding.bodyId))
+        if (!b2Body_IsAwake(binding.bodyId))
+        {
+            continue;
+        }
+
+        const b2Vec2 linearVel = b2Body_GetLinearVelocity(binding.bodyId);
+        if (std::abs(linearVel.y) > 1.2f)
+        {
+            continue;
+        }
+
+        if (!isBodyOnSurface(binding.bodyId))
         {
             continue;
         }
@@ -1653,7 +1705,7 @@ b2BodyId PhysicsEngine::createProjectileBody(ProjectileType type, const Vec2& sp
     b2ShapeDef shapeDef = b2DefaultShapeDef();
     shapeDef.density = density;
     shapeDef.friction = 0.35f;
-    shapeDef.restitution = 0.05f;
+    shapeDef.restitution = 0.22f;
     shapeDef.enableHitEvents = true;
 
     b2Circle circle = {};
