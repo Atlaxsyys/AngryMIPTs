@@ -1,8 +1,8 @@
 #include "OnlineScoreClient.hpp"
 
 #include "logger.hpp"
+#include "platform/http.hpp"
 
-#include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <cstdlib>
@@ -38,14 +38,9 @@ std::string resolveBackendUrl( std::string baseUrl )
     return std::string( kDefaultBackendUrl );
 }
 
-bool isHttpOk( long statusCode )
+bool shouldRetryRequest( const platform::http::Response& response )
 {
-    return statusCode >= 200 && statusCode < 300;
-}
-
-bool shouldRetryRequest( const cpr::Response& response )
-{
-    if ( response.error.code != cpr::ErrorCode::OK )
+    if ( response.network_error )
     {
         return true;
     }
@@ -57,31 +52,30 @@ bool shouldRetryRequest( const cpr::Response& response )
 }
 
 template <typename RequestFn>
-cpr::Response performRequestWithRetry( const char* opName, RequestFn&& requestFn )
+platform::http::Response performRequestWithRetry( const char* opName, RequestFn&& requestFn )
 {
-    cpr::Response response;
+    platform::http::Response response;
 
     for ( int attempt = 1; attempt <= kBackendMaxAttempts; ++attempt )
     {
         response = requestFn();
 
-        const bool ok = ( response.error.code == cpr::ErrorCode::OK )
-                        && isHttpOk( response.status_code );
+        const bool ok = !response.network_error
+                        && platform::http::is_http_ok( response );
         if ( ok )
         {
             return response;
         }
 
         const bool canRetry = attempt < kBackendMaxAttempts && shouldRetryRequest( response );
-        if ( response.error.code != cpr::ErrorCode::OK )
+        if ( response.network_error )
         {
             Logger::error(
-                "OnlineScoreClient::{} attempt {}/{} failed: network error={} ({})",
+                "OnlineScoreClient::{} attempt {}/{} failed: network error: {}",
                 opName,
                 attempt,
                 kBackendMaxAttempts,
-                static_cast<int>( response.error.code ),
-                response.error.message );
+                response.error_message );
         }
         else
         {
@@ -130,24 +124,26 @@ bool OnlineScoreClient::submitScore(
         {"stars", stars},
     };
 
-    const cpr::Response response = performRequestWithRetry(
+    const platform::http::Response response = performRequestWithRetry(
         "submitScore",
         [&]()
         {
-            return cpr::Post(
-                cpr::Url{baseUrl_ + "/scores"},
-                cpr::Header{{"Content-Type", "application/json"}},
-                cpr::Body{body.dump()},
-                cpr::Timeout{kBackendTimeoutMs});
+            return platform::http::post(
+                baseUrl_ + "/scores",
+                body.dump(),
+                platform::http::Headers {
+                    {"Content-Type", "application/json"},
+                },
+                kBackendTimeoutMs );
         });
 
-    if ( response.error.code != cpr::ErrorCode::OK )
+    if ( response.network_error )
     {
         Logger::error( "OnlineScoreClient::submitScore failed after retries." );
         return false;
     }
 
-    if ( !isHttpOk( response.status_code ) )
+    if ( !platform::http::is_http_ok( response ) )
     {
         Logger::error(
             "OnlineScoreClient::submitScore failed: final http status={}",
@@ -179,27 +175,27 @@ bool OnlineScoreClient::submitScoreWithToken(
         {"stars", stars},
     };
 
-    const cpr::Response response = performRequestWithRetry(
+    const platform::http::Response response = performRequestWithRetry(
         "submitScoreWithToken",
         [&]()
         {
-            return cpr::Post(
-                cpr::Url{baseUrl_ + "/scores"},
-                cpr::Header{
+            return platform::http::post(
+                baseUrl_ + "/scores",
+                body.dump(),
+                platform::http::Headers {
                     {"Content-Type", "application/json"},
                     {"Authorization", "Bearer " + token},
                 },
-                cpr::Body{body.dump()},
-                cpr::Timeout{kBackendTimeoutMs});
+                kBackendTimeoutMs );
         });
 
-    if ( response.error.code != cpr::ErrorCode::OK )
+    if ( response.network_error )
     {
         Logger::error( "OnlineScoreClient::submitScoreWithToken failed after retries." );
         return false;
     }
 
-    if ( !isHttpOk( response.status_code ) )
+    if ( !platform::http::is_http_ok( response ) )
     {
         Logger::error(
             "OnlineScoreClient::submitScoreWithToken failed: final http status={}",
@@ -215,24 +211,27 @@ LeaderboardFetchResult OnlineScoreClient::fetchLeaderboardWithStatus(int levelId
 {
     LeaderboardFetchResult result;
 
-    const cpr::Response response = performRequestWithRetry(
+    const platform::http::Response response = performRequestWithRetry(
         "fetchLeaderboard",
         [&]()
         {
-            return cpr::Get(
-                cpr::Url{baseUrl_ + "/leaderboard"},
-                cpr::Parameters{{"levelId", std::to_string(levelId)}},
-                cpr::Timeout{kBackendTimeoutMs});
+            return platform::http::get(
+                baseUrl_ + "/leaderboard",
+                platform::http::QueryParams {
+                    {"levelId", std::to_string( levelId )},
+                },
+                platform::http::Headers {},
+                kBackendTimeoutMs );
         });
 
-    if ( response.error.code != cpr::ErrorCode::OK )
+    if ( response.network_error )
     {
         Logger::error( "OnlineScoreClient::fetchLeaderboard failed after retries." );
         result.status = LeaderboardFetchStatus::Unavailable;
         return result;
     }
 
-    if ( !isHttpOk( response.status_code ) )
+    if ( !platform::http::is_http_ok( response ) )
     {
         Logger::error(
             "OnlineScoreClient::fetchLeaderboard failed: final http status={}",
@@ -241,7 +240,7 @@ LeaderboardFetchResult OnlineScoreClient::fetchLeaderboardWithStatus(int levelId
         return result;
     }
 
-    const json data = json::parse( response.text, nullptr, false );
+    const json data = json::parse( response.body, nullptr, false );
     if ( data.is_discarded() )
     {
         Logger::error( "OnlineScoreClient::fetchLeaderboard failed: invalid JSON payload." );
