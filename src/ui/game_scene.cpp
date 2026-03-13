@@ -641,6 +641,15 @@ GameScene::GameScene ( const platform::Font& font, AccountService* accounts )
     hud_text_.setPosition ( {20.f, 20.f} );
     perf_text_.setFillColor ( platform::Color ( 224, 240, 255, 170 ) );
 #endif
+
+#ifndef __EMSCRIPTEN__
+    game_view_ = platform::View ( sf::FloatRect ( {0.f, 0.f},
+                                                   {world::kWidthPx, world::kHeightPx} ) );
+    game_view_.setViewport ( sf::FloatRect ( {0.f, 0.f}, {1.f, 1.f} ) );
+#else
+    game_view_.reset ( {0.f, 0.f, world::kWidthPx, world::kHeightPx} );
+    game_view_.setViewport ( {0.f, 0.f, 1.f, 1.f} );
+#endif
 }
 
 void GameScene::notify_window_recreated()
@@ -1280,6 +1289,12 @@ SceneId GameScene::handle_input ( const platform::Event& event )
             command_queue_.push ( *cmd );
     }
 #else
+    if ( std::get_if<platform::ResizedEvent> ( &event )
+         || std::get_if<platform::FocusEvent> ( &event ) )
+    {
+        render_targets_dirty_ = true;
+    }
+
     if ( const auto* key = std::get_if<platform::KeyEvent> ( &event ) )
     {
         if ( key->pressed )
@@ -1297,6 +1312,7 @@ SceneId GameScene::handle_input ( const platform::Event& event )
 
     if ( snapshot_.status == LevelStatus::Running && window_ptr_ )
     {
+        apply_letterbox_view ( game_view_, window_ptr_->getSize() );
         auto cmd = slingshot_.handle_input ( event, snapshot_.slingshot, *window_ptr_,
                                              game_view_ );
         if ( cmd.has_value() )
@@ -1767,19 +1783,150 @@ void GameScene::render ( platform::Window& window )
         window.draw ( perf_text_ );
     }
 #else
-    // Web: minimal Raylib render — draw renderer snapshot + HUD text
+    // Web render path mirrors native gameplay view flow (letterbox + camera shake + world/HUD split).
     window_ptr_ = &window;
 
     const platform::Vec2u window_size = window.getSize();
     if ( window_size.x == 0 || window_size.y == 0 )
         return;
 
-    if ( render_targets_dirty_ )
-        rebuild_render_targets ( window_size );
+    apply_letterbox_view ( game_view_, window_size );
+    platform::View world_view = game_view_;
+    if ( shake_time_ > 0.f && shake_strength_ > 0.f )
+    {
+        const platform::Vec2f center = game_view_.getCenter();
+        world_view.setCenter ( {
+            center.x + shake_dist_ ( rng_ ) * shake_strength_,
+            center.y + shake_dist_ ( rng_ ) * shake_strength_
+        } );
+    }
+    window.setView ( world_view );
 
     renderer_.draw_snapshot ( window, snapshot_ );
     slingshot_.render ( window, snapshot_.slingshot,
                         renderer_.projectile_texture ( snapshot_.slingshot.nextProjectile ) );
+
+    for ( const auto& ghost : dropper_payload_ghosts_ )
+    {
+        const float life_t = std::clamp ( 1.f - ghost.age / ghost.lifetime, 0.f, 1.f );
+        const float radius = ghost.radius * ( 0.92f + 0.16f * life_t );
+
+        platform::CircleShape glow ( radius * 1.6f );
+        glow.setOrigin ( {radius * 1.6f, radius * 1.6f} );
+        glow.setPosition ( ghost.position );
+        glow.setFillColor ( platform::Color ( 118, 222, 184,
+                                              static_cast<uint8_t> ( 52.f * life_t ) ) );
+        window.draw ( glow );
+
+        platform::CircleShape shell ( radius );
+        shell.setOrigin ( {radius, radius} );
+        shell.setPosition ( ghost.position );
+        shell.setFillColor ( platform::Color ( 96, 204, 166,
+                                               static_cast<uint8_t> ( 170.f * life_t ) ) );
+        shell.setOutlineThickness ( std::max ( 1.2f, radius * 0.2f ) );
+        shell.setOutlineColor ( platform::Color ( 198, 252, 232,
+                                                  static_cast<uint8_t> ( 196.f * life_t ) ) );
+        window.draw ( shell );
+    }
+
+    for ( const auto& ring : inflater_rings_ )
+    {
+        const float t = std::clamp ( ring.age / ring.lifetime, 0.f, 1.f );
+        const float ease = 1.f - ( 1.f - t ) * ( 1.f - t );
+        const float r = ring.maxRadius * ease;
+        const float a = std::max ( 0.f, 1.f - t * 1.4f );
+
+        platform::CircleShape ring_shape ( r );
+        ring_shape.setOrigin ( {r, r} );
+        ring_shape.setPosition ( ring.position );
+        ring_shape.setFillColor ( platform::Color::Transparent );
+        ring_shape.setOutlineThickness ( std::max ( 1.f, 4.f * ( 1.f - t ) ) );
+        ring_shape.setOutlineColor ( platform::Color ( 255, 210, 230,
+                                                       static_cast<uint8_t> ( 220.f * a ) ) );
+        window.draw ( ring_shape );
+    }
+
+    for ( const auto& bub : bubble_floats_ )
+    {
+        const float life_t = std::clamp ( 1.f - bub.age / bub.lifetime, 0.f, 1.f );
+        const float r = bub.radius;
+
+        platform::CircleShape glow_b ( r * 1.5f );
+        glow_b.setOrigin ( {r * 1.5f, r * 1.5f} );
+        glow_b.setPosition ( bub.position );
+        glow_b.setFillColor ( platform::Color ( 180, 240, 255,
+                                                static_cast<uint8_t> ( 35.f * life_t ) ) );
+        window.draw ( glow_b );
+
+        platform::CircleShape shell_b ( r );
+        shell_b.setOrigin ( {r, r} );
+        shell_b.setPosition ( bub.position );
+        shell_b.setFillColor ( platform::Color ( 210, 248, 255,
+                                                 static_cast<uint8_t> ( 28.f * life_t ) ) );
+        shell_b.setOutlineThickness ( 1.5f );
+        shell_b.setOutlineColor ( platform::Color ( 192, 238, 255,
+                                                    static_cast<uint8_t> ( 200.f * life_t ) ) );
+        window.draw ( shell_b );
+    }
+
+    if ( !bubble_capture_zones_.empty() )
+    {
+        const std::size_t zone_limit = vfx_load_factor_ < 0.60f
+                                           ? std::min<std::size_t> ( bubble_capture_zones_.size(), 1u )
+                                           : bubble_capture_zones_.size();
+        const std::size_t bubble_stride = vfx_load_factor_ < 0.68f ? 2u : 1u;
+
+        for ( std::size_t zi = 0; zi < zone_limit; ++zi )
+        {
+            const auto& zone = bubble_capture_zones_[zi];
+            const float life_t = std::clamp ( 1.f - zone.age / zone.lifetime, 0.f, 1.f );
+            const float pop_t = zone.age / zone.lifetime;
+            const float shimmer = 0.5f + 0.5f * std::sin ( zone.age * 6.f + pop_t * 4.f );
+            const float cap_r = zone.captureRadius;
+
+            for ( std::size_t oi = 0; oi < snapshot_.objects.size(); oi += bubble_stride )
+            {
+                const auto& obj = snapshot_.objects[oi];
+                if ( !obj.isActive || obj.isStatic )
+                    continue;
+                if ( obj.kind != ObjectSnapshot::Kind::Block
+                     && obj.kind != ObjectSnapshot::Kind::Target )
+                    continue;
+
+                const platform::Vec2f opos ( obj.positionPx.x, obj.positionPx.y );
+                const float dx = opos.x - zone.center.x;
+                const float dy = opos.y - zone.center.y;
+                if ( dx * dx + dy * dy > cap_r * cap_r )
+                    continue;
+
+                const float obj_half = obj.radiusPx > 0.f
+                    ? obj.radiusPx
+                    : std::max ( obj.sizePx.x, obj.sizePx.y ) * 0.5f;
+                const float br = obj_half * 1.35f + 4.f;
+
+                platform::CircleShape glow_o ( br * 1.4f );
+                glow_o.setOrigin ( {br * 1.4f, br * 1.4f} );
+                glow_o.setPosition ( opos );
+                glow_o.setFillColor ( platform::Color ( 160, 228, 255,
+                    static_cast<uint8_t> ( 30.f * life_t * ( 0.7f + 0.3f * shimmer ) ) ) );
+                window.draw ( glow_o );
+
+                platform::CircleShape shell_o ( br );
+                shell_o.setOrigin ( {br, br} );
+                shell_o.setPosition ( opos );
+                shell_o.setFillColor ( platform::Color ( 200, 242, 255,
+                    static_cast<uint8_t> ( 22.f * life_t ) ) );
+                shell_o.setOutlineThickness ( 1.8f );
+                shell_o.setOutlineColor ( platform::Color ( 180, 235, 255,
+                    static_cast<uint8_t> ( 180.f * life_t * ( 0.6f + 0.4f * shimmer ) ) ) );
+                window.draw ( shell_o );
+            }
+        }
+    }
+
+    particles_.render ( window );
+
+    window.setView ( window.getDefaultView() );
     renderer_.draw_hud ( window, snapshot_, hud_text_ );
 
     if ( show_perf_overlay_ )

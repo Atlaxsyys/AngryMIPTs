@@ -271,7 +271,7 @@ SceneId LoginScene::handle_input ( const platform::Event& event )
 
     if ( const auto* click = std::get_if<platform::MouseBtnEvent>( &event ) )
     {
-        if ( click->button == 0 )
+        if ( click->button == 0 && click->pressed )
         {
             platform::Vec2f pos { click->x, click->y };
             if ( rect_field_username_.contains( pos ) ) { focus_ = FocusField::Username; caret_clock_.restart(); return SceneId::None; }

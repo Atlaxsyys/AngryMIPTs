@@ -74,9 +74,16 @@ std::optional<Command> Slingshot::handle_input ( const platform::Event& event,
 
     if ( const auto* btn = std::get_if<platform::MouseBtnEvent>( &event ) )
     {
-        platform::Vec2f mouse { btn->x, btn->y };
+        if ( btn->button != 0 )
+        {
+            return std::nullopt;
+        }
 
-        if ( btn->button == 0 && sling.canShoot )
+        const platform::Vec2f mouse = window.mapPixelToCoords (
+            { static_cast<int> ( btn->x ), static_cast<int> ( btn->y ) },
+            world_view );
+
+        if ( btn->pressed && sling.canShoot )
         {
             float dist = std::hypot ( mouse.x - base.x, mouse.y - base.y );
             if ( dist < grab_radius_ )
@@ -84,20 +91,30 @@ std::optional<Command> Slingshot::handle_input ( const platform::Event& event,
                 dragging_ = true;
                 drag_start_ = base;
                 drag_current_ = mouse;
-                return std::nullopt;
             }
+            return std::nullopt;
         }
 
-        // button-up → we don't have a separate event type for release,
-        // so after dragging we launch on any non-press call
-        // Raylib: we track via dragging_ flag + poll
+        if ( !btn->pressed && dragging_ )
+        {
+            dragging_ = false;
+            platform::Vec2f pull { drag_start_.x - drag_current_.x,
+                                   drag_start_.y - drag_current_.y };
+            if ( std::hypot ( pull.x, pull.y ) > 5.f )
+            {
+                return LaunchCmd{{pull.x, pull.y}};
+            }
+            return std::nullopt;
+        }
     }
 
     if ( const auto* move = std::get_if<platform::MouseMoveEvent>( &event ) )
     {
         if ( dragging_ )
         {
-            platform::Vec2f mouse { move->x, move->y };
+            const platform::Vec2f mouse = window.mapPixelToCoords (
+                { static_cast<int> ( move->x ), static_cast<int> ( move->y ) },
+                world_view );
             platform::Vec2f offset { mouse.x - drag_start_.x, mouse.y - drag_start_.y };
             float len = std::hypot ( offset.x, offset.y );
             if ( len > sling.maxPullPx )
@@ -106,18 +123,6 @@ std::optional<Command> Slingshot::handle_input ( const platform::Event& event,
                 offset.y = offset.y / len * sling.maxPullPx;
             }
             drag_current_ = { drag_start_.x + offset.x, drag_start_.y + offset.y };
-        }
-    }
-
-    // On Raylib, poll mouse button release via IsMouseButtonReleased
-    if ( dragging_ && IsMouseButtonReleased( MOUSE_BUTTON_LEFT ) )
-    {
-        dragging_ = false;
-        platform::Vec2f pull { drag_start_.x - drag_current_.x,
-                               drag_start_.y - drag_current_.y };
-        if ( std::hypot ( pull.x, pull.y ) > 5.f )
-        {
-            return LaunchCmd{{pull.x, pull.y}};
         }
     }
 

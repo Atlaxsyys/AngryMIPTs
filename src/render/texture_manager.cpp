@@ -1,4 +1,5 @@
 #include "render/texture_manager.hpp"
+#include "data/logger.hpp"
 
 #ifndef __EMSCRIPTEN__
 #include <SFML/Graphics.hpp>
@@ -582,10 +583,8 @@ void TextureManager::generate_all()
 
     generated_ = true;
 }
-#else  // __EMSCRIPTEN__ — Raylib flat-color texture generation
+#else  // __EMSCRIPTEN__ — Raylib texture loading from pre-generated assets
 
-// On web we generate simple flat-colour textures using Raylib Image API.
-// Procedural detail is skipped; colours match the SFML version exactly.
 static platform::Texture make_flat_texture( platform::Color fill, platform::Color detail = {0,0,0,0} )
 {
     ::Image img = GenImageColor( kTexSize, kTexSize, fill.to_rl() );
@@ -597,8 +596,31 @@ static platform::Texture make_flat_texture( platform::Color fill, platform::Colo
     platform::Texture tex;
     tex.rl     = LoadTextureFromImage( img );
     tex.loaded = IsTextureValid( tex.rl );
+    tex.setSmooth ( true );
     UnloadImage( img );
     return tex;
+}
+
+static platform::Texture load_generated_texture_or_fallback(
+    const std::string& file_name,
+    platform::Color fallback_fill,
+    platform::Color fallback_detail )
+{
+    const std::string path = "/assets/textures/generated/" + file_name;
+
+    platform::Texture tex;
+    tex.rl = LoadTexture ( path.c_str() );
+    tex.loaded = IsTextureValid ( tex.rl );
+    if ( tex.loaded )
+    {
+        tex.setSmooth ( true );
+        return tex;
+    }
+
+    Logger::error (
+        "TextureManager(web): failed to load '{}', using flat fallback",
+        path );
+    return make_flat_texture ( fallback_fill, fallback_detail );
 }
 
 void TextureManager::generate_all()
@@ -606,23 +628,38 @@ void TextureManager::generate_all()
     if ( generated_ ) return;
     textures_.clear();
 
-    textures_["block_wood"]    = make_flat_texture( {156,103, 56}, {182,122, 68, 80} );
-    textures_["block_stone"]   = make_flat_texture( {146,151,158}, { 96,101,108, 80} );
-    textures_["block_glass"]   = make_flat_texture( {170,220,245,135}, {255,255,255, 60} );
-    textures_["block_ice"]     = make_flat_texture( {198,231,255,170}, {238,248,255, 80} );
+    textures_["block_wood"] = load_generated_texture_or_fallback(
+        "block_wood.png", {156, 103, 56}, {182, 122, 68, 80} );
+    textures_["block_stone"] = load_generated_texture_or_fallback(
+        "block_stone.png", {146, 151, 158}, {96, 101, 108, 80} );
+    textures_["block_glass"] = load_generated_texture_or_fallback(
+        "block_glass.png", {170, 220, 245, 135}, {255, 255, 255, 60} );
+    textures_["block_ice"] = load_generated_texture_or_fallback(
+        "block_ice.png", {198, 231, 255, 170}, {238, 248, 255, 80} );
 
-    textures_["proj_standard"] = make_flat_texture( {204, 72, 68}, {255,178,165, 80} );
-    textures_["proj_heavy"]    = make_flat_texture( { 86, 58,124}, {170,130,214, 80} );
-    textures_["proj_splitter"] = make_flat_texture( { 65,150,214}, {212,240,255, 80} );
-    textures_["proj_dasher"]   = make_flat_texture( {242,156, 66}, {255,233,178, 80} );
-    textures_["proj_bomber"]   = make_flat_texture( { 60, 64, 76}, {188,194,214, 40} );
-    textures_["proj_dropper"]  = make_flat_texture( { 74,176,140}, {198,244,224, 70} );
-    textures_["proj_boomerang"]= make_flat_texture( {150,190, 76}, {240,252,196, 80} );
-    textures_["proj_bubbler"]  = make_flat_texture( { 86,190,236}, {230,248,255, 74} );
-    textures_["proj_inflater"] = make_flat_texture( {230,110,170}, {255,200,230, 80} );
+    textures_["proj_standard"] = load_generated_texture_or_fallback(
+        "proj_standard.png", {204, 72, 68}, {255, 178, 165, 80} );
+    textures_["proj_heavy"] = load_generated_texture_or_fallback(
+        "proj_heavy.png", {86, 58, 124}, {170, 130, 214, 80} );
+    textures_["proj_splitter"] = load_generated_texture_or_fallback(
+        "proj_splitter.png", {65, 150, 214}, {212, 240, 255, 80} );
+    textures_["proj_dasher"] = load_generated_texture_or_fallback(
+        "proj_dasher.png", {242, 156, 66}, {255, 233, 178, 80} );
+    textures_["proj_bomber"] = load_generated_texture_or_fallback(
+        "proj_bomber.png", {60, 64, 76}, {188, 194, 214, 40} );
+    textures_["proj_dropper"] = load_generated_texture_or_fallback(
+        "proj_dropper.png", {74, 176, 140}, {198, 244, 224, 70} );
+    textures_["proj_boomerang"] = load_generated_texture_or_fallback(
+        "proj_boomerang.png", {150, 190, 76}, {240, 252, 196, 80} );
+    textures_["proj_bubbler"] = load_generated_texture_or_fallback(
+        "proj_bubbler.png", {86, 190, 236}, {230, 248, 255, 74} );
+    textures_["proj_inflater"] = load_generated_texture_or_fallback(
+        "proj_inflater.png", {230, 110, 170}, {255, 200, 230, 80} );
 
-    textures_["target"]        = make_flat_texture( { 68,148, 64}, {156,235,125, 80} );
-    textures_["slingshot_wood"]= make_flat_texture( {118, 80, 46}, {138, 92, 56, 80} );
+    textures_["target"] = load_generated_texture_or_fallback(
+        "target.png", {68, 148, 64}, {156, 235, 125, 80} );
+    textures_["slingshot_wood"] = load_generated_texture_or_fallback(
+        "slingshot_wood.png", {118, 80, 46}, {138, 92, 56, 80} );
 
     generated_ = true;
 }

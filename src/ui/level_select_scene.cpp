@@ -313,7 +313,7 @@ SceneId LevelSelectScene::handle_input ( const platform::Event& event )
 
     if ( const auto* click = std::get_if<platform::MouseBtnEvent>( &event ) )
     {
-        if ( click->button == 0 )
+        if ( click->button == 0 && click->pressed )
         {
             platform::Vec2f pos { click->x, click->y };
             if ( rect_badge_.contains(pos) && accounts_ )

@@ -13,28 +13,34 @@ void apply_letterbox_view ( platform::View& view, platform::Vec2u window_size )
     const float window_aspect =
         static_cast<float> ( window_size.x ) / static_cast<float> ( window_size.y );
 
-#ifndef __EMSCRIPTEN__
     if ( window_aspect > world::kAspect )
     {
         const float width = world::kAspect / window_aspect;
         const float left = ( 1.f - width ) * 0.5f;
+#ifndef __EMSCRIPTEN__
         view.setViewport ( sf::FloatRect ( {left, 0.f}, {width, 1.f} ) );
+#else
+        view.setViewport ( {left, 0.f, width, 1.f} );
+#endif
     }
     else if ( window_aspect < world::kAspect )
     {
         const float height = window_aspect / world::kAspect;
         const float top = ( 1.f - height ) * 0.5f;
+#ifndef __EMSCRIPTEN__
         view.setViewport ( sf::FloatRect ( {0.f, top}, {1.f, height} ) );
+#else
+        view.setViewport ( {0.f, top, 1.f, height} );
+#endif
     }
     else
     {
+#ifndef __EMSCRIPTEN__
         view.setViewport ( sf::FloatRect ( {0.f, 0.f}, {1.f, 1.f} ) );
-    }
 #else
-    // On web, View is just a logical rect — letterbox is handled by Raylib camera/scissor
-    (void)view;
-    (void)window_aspect;
+        view.setViewport ( {0.f, 0.f, 1.f, 1.f} );
 #endif
+    }
 }
 
 }  // namespace angry

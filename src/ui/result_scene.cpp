@@ -178,7 +178,7 @@ SceneId ResultScene::handle_input ( const platform::Event& event )
         lb_scroll_ = std::max(0.f, lb_scroll_ - wheel->delta * 36.f);
     if ( const auto* click = std::get_if<platform::MouseBtnEvent>( &event ) )
     {
-        if ( click->button == 0 )
+        if ( click->button == 0 && click->pressed )
         {
             platform::Vec2f pos { click->x, click->y };
             if ( rect_btn_retry_.contains(pos) ) return SceneId::Game;

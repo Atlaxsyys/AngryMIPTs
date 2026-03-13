@@ -7,6 +7,7 @@
 #ifndef __EMSCRIPTEN__
 #include <cpr/cpr.h>
 #else
+#include <emscripten.h>
 #include <emscripten/fetch.h>
 #include <cctype>
 #include <cstdio>
@@ -173,11 +174,54 @@ inline Response fetch_sync( const std::string& method,
                             const Headers& headers,
                             int timeout_ms )
 {
+    struct FetchSyncContext
+    {
+        Response response;
+        bool done = false;
+    };
+
     emscripten_fetch_attr_t attr;
     emscripten_fetch_attr_init( &attr );
     std::snprintf( attr.requestMethod, sizeof( attr.requestMethod ), "%s", method.c_str() );
-    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
     attr.timeoutMSecs = timeout_ms;
+
+    FetchSyncContext context;
+    attr.userData = &context;
+    attr.onsuccess = [] ( emscripten_fetch_t* fetch )
+    {
+        auto* ctx = static_cast<FetchSyncContext*> ( fetch->userData );
+        ctx->response.status_code = static_cast<int> ( fetch->status );
+        if ( fetch->data != nullptr && fetch->numBytes > 0 )
+        {
+            ctx->response.body.assign ( fetch->data,
+                                        static_cast<std::size_t> ( fetch->numBytes ) );
+        }
+        if ( fetch->status == 0 )
+        {
+            ctx->response.network_error = true;
+            ctx->response.error_message =
+                ( fetch->statusText[0] != '\0' ) ? fetch->statusText : "network error";
+        }
+        ctx->done = true;
+        emscripten_fetch_close ( fetch );
+    };
+    attr.onerror = [] ( emscripten_fetch_t* fetch )
+    {
+        auto* ctx = static_cast<FetchSyncContext*> ( fetch->userData );
+        ctx->response.status_code = static_cast<int> ( fetch->status );
+        ctx->response.network_error = true;
+        if ( fetch->statusText[0] != '\0' )
+        {
+            ctx->response.error_message = fetch->statusText;
+        }
+        else
+        {
+            ctx->response.error_message = "network error";
+        }
+        ctx->done = true;
+        emscripten_fetch_close ( fetch );
+    };
 
     std::vector<std::string> header_storage;
     std::vector<const char*> flat_headers = flatten_headers( headers, &header_storage );
@@ -192,35 +236,19 @@ inline Response fetch_sync( const std::string& method,
 
     emscripten_fetch_t* fetch = emscripten_fetch( &attr, url.c_str() );
 
-    Response response;
     if ( fetch == nullptr )
     {
-        response.network_error = true;
-        response.error_message = "emscripten_fetch returned nullptr";
-        return response;
+        context.response.network_error = true;
+        context.response.error_message = "emscripten_fetch returned nullptr";
+        return context.response;
     }
 
-    response.status_code = static_cast<int> ( fetch->status );
-    if ( fetch->data != nullptr && fetch->numBytes > 0 )
+    while ( !context.done )
     {
-        response.body.assign( fetch->data, static_cast<std::size_t> ( fetch->numBytes ) );
+        emscripten_sleep ( 1 );
     }
 
-    if ( fetch->status == 0 )
-    {
-        response.network_error = true;
-        if ( fetch->statusText[0] != '\0' )
-        {
-            response.error_message = fetch->statusText;
-        }
-        else
-        {
-            response.error_message = "network error";
-        }
-    }
-
-    emscripten_fetch_close( fetch );
-    return response;
+    return context.response;
 }
 
 inline Response post( const std::string& url,
