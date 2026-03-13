@@ -237,19 +237,24 @@ void Renderer::draw_snapshot ( platform::RenderTarget& target, const WorldSnapsh
 
 void Renderer::draw_background ( platform::RenderTarget& target )
 {
-    // Sky gradient (top=deep blue, bottom=light blue)
-    platform::Vertex sky[] = {
-        {{0.f, 0.f}, platform::Color ( 70, 130, 200 )},
-        {{kWorldW, 0.f}, platform::Color ( 70, 130, 200 )},
-        {{kWorldW, kGroundY}, platform::Color ( 160, 210, 240 )},
-        {{0.f, kGroundY}, platform::Color ( 160, 210, 240 )},
-    };
-    target.draw ( sky, 4, sf::PrimitiveType::TriangleFan );
+    // Sky — two solid rects in world coordinates (Window::draw(RectShape) applies
+    // world_to_screen internally, so we use world units here).
+    const float sky_mid = kGroundY * 0.55f;
+
+    platform::RectShape sky_top ( { kWorldW, sky_mid } );
+    sky_top.setPosition ( { 0.f, 0.f } );
+    sky_top.setFillColor ( platform::Color ( 70, 130, 200 ) );
+    target.draw ( sky_top );
+
+    platform::RectShape sky_bot ( { kWorldW, kGroundY - sky_mid } );
+    sky_bot.setPosition ( { 0.f, sky_mid } );
+    sky_bot.setFillColor ( platform::Color ( 148, 200, 235 ) );
+    target.draw ( sky_bot );
 
     // Distant hills (dark green silhouettes)
-    draw_hill ( target, 300.f, kGroundY, 400.f, 120.f, platform::Color ( 60, 100, 50, 180 ) );
-    draw_hill ( target, 800.f, kGroundY, 500.f, 90.f, platform::Color ( 50, 90, 45, 160 ) );
-    draw_hill ( target, 1400.f, kGroundY, 450.f, 110.f, platform::Color ( 55, 95, 48, 170 ) );
+    draw_hill ( target, 300.f, kGroundY, 400.f, 120.f, platform::Color ( 52, 110, 48, 255 ) );
+    draw_hill ( target, 800.f, kGroundY, 500.f, 90.f, platform::Color ( 42, 96, 40, 255 ) );
+    draw_hill ( target, 1400.f, kGroundY, 450.f, 110.f, platform::Color ( 48, 104, 44, 255 ) );
 
     // Clouds
     static platform::Clock cloud_clock;
@@ -267,32 +272,23 @@ void Renderer::draw_background ( platform::RenderTarget& target )
         const platform::Color c_soil   ( 72,  50,   28 );
         const platform::Color c_deep   ( 48,  34,   18 );
 
-        // Layer 0: grass top band (kGroundY .. kGroundY+28)
-        platform::Vertex g0[] = {
-            {{0.f,      kGroundY},       c_grass},
-            {{kWorldW,  kGroundY},       c_grass},
-            {{kWorldW,  kGroundY + 28.f}, c_top},
-            {{0.f,      kGroundY + 28.f}, c_top},
+        // Use RectShape for solid fills — reliable on all WebGL backends.
+        // Gradient layers: approximate with two rects (top colour / bottom colour).
+        auto draw_rect_strip = [&]( float y0, float y1,
+                                    platform::Color top_c, platform::Color bot_c )
+        {
+            platform::RectShape r ( { kWorldW, ( y1 - y0 ) * 0.5f } );
+            r.setPosition ( { 0.f, y0 } );
+            r.setFillColor ( top_c );
+            target.draw ( r );
+            r.setPosition ( { 0.f, y0 + ( y1 - y0 ) * 0.5f } );
+            r.setFillColor ( bot_c );
+            target.draw ( r );
         };
-        target.draw ( g0, 4, sf::PrimitiveType::TriangleFan );
 
-        // Layer 1: topsoil (kGroundY+28 .. kGroundY+120)
-        platform::Vertex g1[] = {
-            {{0.f,      kGroundY + 28.f},  c_top},
-            {{kWorldW,  kGroundY + 28.f},  c_top},
-            {{kWorldW,  kGroundY + 120.f}, c_soil},
-            {{0.f,      kGroundY + 120.f}, c_soil},
-        };
-        target.draw ( g1, 4, sf::PrimitiveType::TriangleFan );
-
-        // Layer 2: deep soil (kGroundY+120 .. bottom)
-        platform::Vertex g2[] = {
-            {{0.f,      kGroundY + 120.f}, c_soil},
-            {{kWorldW,  kGroundY + 120.f}, c_soil},
-            {{kWorldW,  kWorldH},          c_deep},
-            {{0.f,      kWorldH},          c_deep},
-        };
-        target.draw ( g2, 4, sf::PrimitiveType::TriangleFan );
+        draw_rect_strip ( kGroundY,        kGroundY + 28.f,  c_grass, c_top  );
+        draw_rect_strip ( kGroundY + 28.f, kGroundY + 120.f, c_top,   c_soil );
+        draw_rect_strip ( kGroundY + 120.f, kWorldH,          c_soil,  c_deep );
     }
 
     // Wavy grass edge: a thin strip with sinusoidal top profile
@@ -363,18 +359,19 @@ void Renderer::draw_background ( platform::RenderTarget& target )
 void draw_hill ( platform::RenderTarget& target, float cx, float base_y,
                  float width, float height, platform::Color color )
 {
+    // TriangleStrip: pairs of (top_contour, base_y) vertices marching left→right.
+    // This avoids TriangleFan winding issues on WebGL.
     const int segments = 20;
-    platform::VertexArray hill ( sf::PrimitiveType::TriangleFan, segments + 2 );
-
-    // center bottom
-    hill[0] = {{cx, base_y}, color};
+    platform::VertexArray hill ( sf::PrimitiveType::TriangleStrip,
+                                 static_cast<std::size_t>( ( segments + 1 ) * 2 ) );
 
     for ( int i = 0; i <= segments; ++i )
     {
-        float t = static_cast<float> ( i ) / static_cast<float> ( segments );
-        float x = cx - width / 2.f + t * width;
-        float y = base_y - height * std::sin ( t * 3.14159f );
-        hill[static_cast<unsigned> ( i + 1 )] = {{x, y}, color};
+        const float t = static_cast<float>( i ) / static_cast<float>( segments );
+        const float x = cx - width * 0.5f + t * width;
+        const float y_top = base_y - height * std::sin ( t * 3.14159f );
+        hill[static_cast<std::size_t>( i * 2 )]     = { { x, y_top  }, color };
+        hill[static_cast<std::size_t>( i * 2 + 1 )] = { { x, base_y }, color };
     }
 
     target.draw ( hill );
@@ -465,7 +462,7 @@ void Renderer::draw_object ( platform::RenderTarget& target, const ObjectSnapsho
     }
 
     // --- Textured blocks, targets, projectiles ---
-    const sf::Texture* texture = nullptr;
+    const platform::Texture* texture = nullptr;
     if ( is_block )
         texture = &textures_.block ( obj.material );
     else if ( obj.kind == ObjectSnapshot::Kind::Target )

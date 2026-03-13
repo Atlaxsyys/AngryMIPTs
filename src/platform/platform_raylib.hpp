@@ -164,8 +164,12 @@ struct Font
     bool   loaded = false;
     bool openFromFile( const std::string& path )
     {
-        rl = ::LoadFont( path.c_str() );
+        // Load at high resolution so DrawTextEx can scale down cleanly.
+        // LoadFont default is 32 px — scaling up from that causes pixellation.
+        rl = ::LoadFontEx( path.c_str(), 128, nullptr, 0 );
         loaded = IsFontValid( rl );
+        if ( loaded )
+            SetTextureFilter( rl.texture, TEXTURE_FILTER_BILINEAR );
         return loaded;
     }
 };
@@ -381,7 +385,13 @@ struct Window
     void close()        { open_ = false; CloseWindow(); }
     void display()      { EndDrawing(); }
     void clear( Color c = {} ) { BeginDrawing(); ClearBackground( c.to_rl() ); }
-    void setFramerateLimit( unsigned fps )  { SetTargetFPS( int(fps) ); }
+    void setFramerateLimit( unsigned /*fps*/ )
+    {
+        // On web, emscripten_set_main_loop with fps=0 uses requestAnimationFrame
+        // (native monitor rate). Calling SetTargetFPS() here would cap to 30 in
+        // some browsers. Leave FPS uncapped; the browser's vsync handles pacing.
+        SetTargetFPS( 0 );
+    }
     void setVerticalSyncEnabled( bool /*v*/ ) {}
     void setView( const View& view ) { current_view_ = view; }
     const View& getDefaultView() const { return default_view_; }
@@ -598,13 +608,17 @@ struct Sound
 
 inline void draw_colored_triangle( const Vertex& a, const Vertex& b, const Vertex& c )
 {
+    // Use Raylib's rlgl batch system with the correct 2D projection matrix.
+    // rlBegin/rlVertex2f operate in the current matrix space (screen pixels in
+    // Raylib's default 2D mode), so this produces correct screen-space triangles
+    // with per-vertex colour interpolation (gradient support).
     rlBegin( RL_TRIANGLES );
-    rlColor4ub( a.color.r, a.color.g, a.color.b, a.color.a );
-    rlVertex2f( a.position.x, a.position.y );
-    rlColor4ub( b.color.r, b.color.g, b.color.b, b.color.a );
-    rlVertex2f( b.position.x, b.position.y );
-    rlColor4ub( c.color.r, c.color.g, c.color.b, c.color.a );
-    rlVertex2f( c.position.x, c.position.y );
+        rlColor4ub( a.color.r, a.color.g, a.color.b, a.color.a );
+        rlVertex2f( a.position.x, a.position.y );
+        rlColor4ub( b.color.r, b.color.g, b.color.b, b.color.a );
+        rlVertex2f( b.position.x, b.position.y );
+        rlColor4ub( c.color.r, c.color.g, c.color.b, c.color.a );
+        rlVertex2f( c.position.x, c.position.y );
     rlEnd();
 }
 
@@ -770,24 +784,24 @@ inline void Window::draw( const Text& text )
     const Vec2f pos_screen = world_to_screen ( *this, current_view_, base_world );
     const Vec2f scale = world_scale_to_screen ( *this, current_view_, { 1.f, 1.f } );
     const float font_size = std::max ( 4.f, static_cast<float> ( text.char_size_ ) * scale.y );
-    const float spacing = std::max ( 0.5f, scale.x );
+    const float spacing = font_size / 10.f;  // Raylib recommended: fontSize/10
     const Vector2 size = MeasureTextEx( text.font_->rl, text.string_.c_str(), font_size, spacing );
     const Vector2 pos { pos_screen.x, pos_screen.y };
 
     if ( text.outline_thickness_ > 0.f && text.outline_color_.a > 0 )
     {
         const float d = std::max ( 1.f, text.outline_thickness_ * std::min ( scale.x, scale.y ) );
-        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x - d, pos.y }, size.y, 1.f,
+        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x - d, pos.y }, font_size, spacing,
                     text.outline_color_.to_rl() );
-        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x + d, pos.y }, size.y, 1.f,
+        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x + d, pos.y }, font_size, spacing,
                     text.outline_color_.to_rl() );
-        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x, pos.y - d }, size.y, 1.f,
+        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x, pos.y - d }, font_size, spacing,
                     text.outline_color_.to_rl() );
-        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x, pos.y + d }, size.y, 1.f,
+        DrawTextEx( text.font_->rl, text.string_.c_str(), { pos.x, pos.y + d }, font_size, spacing,
                     text.outline_color_.to_rl() );
     }
 
-    DrawTextEx( text.font_->rl, text.string_.c_str(), pos, size.y, spacing, text.fill_color_.to_rl() );
+    DrawTextEx( text.font_->rl, text.string_.c_str(), pos, font_size, spacing, text.fill_color_.to_rl() );
 }
 
 inline void Window::draw( const Vertex* vertices, std::size_t count, sf::PrimitiveType type )

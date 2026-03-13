@@ -637,8 +637,10 @@ GameScene::GameScene ( const platform::Font& font, AccountService* accounts )
         Logger::info ( "GameScene: shaders are unavailable, using fallback rendering path" );
     }
 #else
+    hud_text_ = platform::Text ( font_, "", 20 );
     hud_text_.setFillColor ( platform::Color ( 255, 255, 255 ) );
     hud_text_.setPosition ( {20.f, 20.f} );
+    perf_text_ = platform::Text ( font_, "", 11 );
     perf_text_.setFillColor ( platform::Color ( 224, 240, 255, 170 ) );
 #endif
 
