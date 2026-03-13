@@ -6,8 +6,11 @@
 #include <box2d/box2d.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <type_traits>
@@ -19,12 +22,14 @@ namespace
 {
 
 constexpr float kDegreesPerRadian = 57.2957795f;
+constexpr float kRadiansPerDegree = 0.0174532925f;
 constexpr float kSlingshotForkYOffsetPx = 60.0f;
 constexpr float kProjectileSleepLinearSpeedMps = 0.6f;
 constexpr float kProjectileSleepAngularSpeedRad = 1.2f;
 constexpr int kProjectileSettledFramesNeeded = 15;
 constexpr float kProjectileSettledRemoveDelaySec = 1.5f;
 constexpr float kDamageMinSpeedMps = 1.0f;
+constexpr float kCollisionEventMinSpeedMps = 0.7f;
 constexpr float kDamageScale = 16.0f;
 constexpr float kBlockVsBlockDamageMultiplier = 0.15f;
 constexpr float kFloorImpactDamageMultiplier = 0.75f;
@@ -39,6 +44,15 @@ constexpr float kBubblerLiftLinearDamping = 1.1f;
 constexpr float kBubblerLiftAngularDamping = 2.0f;
 constexpr float kBubblerBurstDownImpulseMps = 1.8f;
 constexpr float kBubblerMaxUpwardSpeedMps = 3.8f;
+constexpr float kBoomerangDelaySec = 0.132f;
+constexpr float kBoomerangReturnDurationSec = 1.21f;
+constexpr float kBoomerangMinReturnDistancePx = 132.0f;
+constexpr float kBoomerangMainAccelMps2 = 28.6f;
+constexpr float kBoomerangCurveAccelMps2 = 8.8f;
+constexpr float kBoomerangMaxReturnSpeedMps = 12.1f;
+constexpr float kBoomerangReturnLinearDamping = 0.605f;
+constexpr float kBoomerangReturnGravityScale = 0.902f;
+constexpr float kBoomerangReturnSpinRad = 17.6f;
 
 inline float clampValue(float value, float minVal, float maxVal)
 {
@@ -55,6 +69,13 @@ inline bool isOutOfBoundsPx(const Vec2& positionPx)
 inline bool bodyIdEquals(b2BodyId a, b2BodyId b)
 {
     return B2_ID_EQUALS(a, b);
+}
+
+inline std::uint64_t bodyIdKey(b2BodyId id)
+{
+    return (static_cast<std::uint64_t>(id.world0) << 48)
+        ^ (static_cast<std::uint64_t>(id.revision) << 32)
+        ^ static_cast<std::uint64_t>(id.index1);
 }
 
 inline Vec2 rotatePxVector(const Vec2& v, float angleRad)
@@ -112,6 +133,10 @@ inline float projectileDamageMultiplier(ProjectileType projectileType)
     {
         return 1.35f;
     }
+    if (projectileType == ProjectileType::Boomerang)
+    {
+        return 0.77f;
+    }
 
     return 1.0f;
 }
@@ -131,6 +156,31 @@ inline int blockDestroyedScore(Material material)
     }
 
     return 20;
+}
+
+inline float computeBottomOffsetPx(const BlockData& block)
+{
+    if (block.shape == BlockShape::Circle || block.radiusPx > 0.0f)
+    {
+        return block.radiusPx;
+    }
+
+    if (block.shape == BlockShape::Triangle && block.triangleLocalVerticesPx.size() == 3)
+    {
+        const float angleRad = block.angleDeg * kRadiansPerDegree;
+        const float c = std::cos(angleRad);
+        const float s = std::sin(angleRad);
+
+        float maxY = -std::numeric_limits<float>::infinity();
+        for (const Vec2& vertex : block.triangleLocalVerticesPx)
+        {
+            const float rotatedY = vertex.x * s + vertex.y * c;
+            maxY = std::max(maxY, rotatedY);
+        }
+        return std::isfinite(maxY) ? maxY : (block.sizePx.y * 0.5f);
+    }
+
+    return block.sizePx.y * 0.5f;
 }
 
 struct StarThresholds
@@ -178,14 +228,17 @@ inline int calculateStarsForResult(
 
 inline bool isBodyOnSurface(b2BodyId bodyId)
 {
-    const int contactCapacity = b2Body_GetContactCapacity(bodyId);
-    if (contactCapacity <= 0)
+    if (b2Body_GetContactCapacity(bodyId) <= 0)
     {
         return false;
     }
 
-    std::vector<b2ContactData> contacts(static_cast<size_t>(contactCapacity));
-    const int contactCount = b2Body_GetContactData(bodyId, contacts.data(), contactCapacity);
+    // Avoid per-frame heap allocations in hot physics loop.
+    std::array<b2ContactData, 8> contacts{};
+    const int contactCount = b2Body_GetContactData(
+        bodyId,
+        contacts.data(),
+        static_cast<int>(contacts.size()));
     for (int i = 0; i < contactCount; ++i)
     {
         if (contacts[static_cast<size_t>(i)].manifold.pointCount > 0)
@@ -287,15 +340,7 @@ void PhysicsEngine::loadLevel(const LevelData& level)
     float supportBottomPx = kGroundTopYpx;
     for (const BlockData& block : level.blocks)
     {
-        float bottomPx = block.positionPx.y;
-        if (block.radiusPx > 0.0f)
-        {
-            bottomPx += block.radiusPx;
-        }
-        else
-        {
-            bottomPx += block.sizePx.y * 0.5f;
-        }
+        const float bottomPx = block.positionPx.y + computeBottomOffsetPx(block);
         supportBottomPx = std::max(supportBottomPx, bottomPx);
     }
 
@@ -404,18 +449,148 @@ void PhysicsEngine::step(float dt)
         }
     }
 
+    for (BodyBinding& binding : bodies_)
+    {
+        if (binding.kind != ObjectSnapshot::Kind::Projectile
+            || binding.projectileType != ProjectileType::Boomerang)
+        {
+            continue;
+        }
+        if (B2_IS_NULL(binding.bodyId) || !b2Body_IsValid(binding.bodyId))
+        {
+            binding.boomerangReturnRequested = false;
+            binding.boomerangReturning = false;
+            binding.boomerangTimeSinceLaunchSec = 0.0f;
+            binding.boomerangReturnTimeSec = 0.0f;
+            continue;
+        }
+
+        binding.boomerangTimeSinceLaunchSec += clampedDt;
+
+        if (binding.boomerangReturnRequested && !binding.boomerangReturning)
+        {
+            const b2Vec2 worldPos = b2Body_GetPosition(binding.bodyId);
+            const Vec2 posPx = worldToPx({worldPos.x, worldPos.y});
+            const Vec2 toStartPx = {
+                binding.boomerangStartPx.x - posPx.x,
+                binding.boomerangStartPx.y - posPx.y,
+            };
+            const float distToStartPx =
+                std::sqrt(toStartPx.x * toStartPx.x + toStartPx.y * toStartPx.y);
+
+            if (binding.boomerangTimeSinceLaunchSec >= kBoomerangDelaySec
+                && distToStartPx >= kBoomerangMinReturnDistancePx)
+            {
+                binding.boomerangReturning = true;
+                binding.boomerangReturnTimeSec = 0.0f;
+                b2Body_SetGravityScale(binding.bodyId, kBoomerangReturnGravityScale);
+                b2Body_SetLinearDamping(binding.bodyId, kBoomerangReturnLinearDamping);
+                b2Body_SetAngularDamping(binding.bodyId, 0.0f);
+                b2Body_SetAwake(binding.bodyId, true);
+
+                const float cross =
+                    binding.boomerangLaunchDir.x * toStartPx.y
+                    - binding.boomerangLaunchDir.y * toStartPx.x;
+                binding.boomerangCurveSign = cross >= 0.0f ? 1.0f : -1.0f;
+            }
+        }
+
+        if (!binding.boomerangReturning)
+        {
+            continue;
+        }
+
+        binding.boomerangReturnTimeSec += clampedDt;
+
+        const b2Vec2 worldPos = b2Body_GetPosition(binding.bodyId);
+        const Vec2 posPx = worldToPx({worldPos.x, worldPos.y});
+        Vec2 toTargetPx = {
+            binding.boomerangStartPx.x - posPx.x,
+            binding.boomerangStartPx.y - posPx.y,
+        };
+        float lenPx = std::sqrt(toTargetPx.x * toTargetPx.x + toTargetPx.y * toTargetPx.y);
+        if (lenPx < 0.001f)
+        {
+            lenPx = 0.001f;
+            toTargetPx = {-1.0f, 0.0f};
+        }
+
+        const Vec2 dirToTarget = {
+            toTargetPx.x / lenPx,
+            toTargetPx.y / lenPx,
+        };
+        const Vec2 perpDir = {
+            -dirToTarget.y * binding.boomerangCurveSign,
+            dirToTarget.x * binding.boomerangCurveSign,
+        };
+
+        const float mass = std::max(0.01f, b2Body_GetMass(binding.bodyId));
+        const b2Vec2 force = {
+            mass * (dirToTarget.x * kBoomerangMainAccelMps2 + perpDir.x * kBoomerangCurveAccelMps2),
+            mass * (dirToTarget.y * kBoomerangMainAccelMps2 + perpDir.y * kBoomerangCurveAccelMps2),
+        };
+        b2Body_ApplyForceToCenter(binding.bodyId, force, true);
+
+        b2Vec2 velocity = b2Body_GetLinearVelocity(binding.bodyId);
+        const float speedMps = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+        if (speedMps > kBoomerangMaxReturnSpeedMps)
+        {
+            const float scale = kBoomerangMaxReturnSpeedMps / speedMps;
+            velocity.x *= scale;
+            velocity.y *= scale;
+            b2Body_SetLinearVelocity(binding.bodyId, velocity);
+        }
+
+        b2Body_SetAngularVelocity(
+            binding.bodyId,
+            binding.boomerangCurveSign * kBoomerangReturnSpinRad);
+
+        if (binding.boomerangReturnTimeSec >= kBoomerangReturnDurationSec)
+        {
+            binding.boomerangReturning = false;
+            binding.boomerangReturnRequested = false;
+            b2Body_SetGravityScale(binding.bodyId, 1.0f);
+            b2Body_SetLinearDamping(binding.bodyId, 0.0f);
+        }
+    }
+
     b2World_Step(worldId_, clampedDt, 4);
 
     // Apply damage from contact hit events and remove destroyed bodies.
     const b2ContactEvents contactEvents = b2World_GetContactEvents(worldId_);
+    std::unordered_map<std::uint64_t, BodyBinding*> bindingByBodyId;
+    bindingByBodyId.reserve(bodies_.size());
+    for (BodyBinding& binding : bodies_)
+    {
+        if (B2_IS_NON_NULL(binding.bodyId))
+        {
+            bindingByBodyId[bodyIdKey(binding.bodyId)] = &binding;
+        }
+    }
+
     std::unordered_map<EntityId, float> pendingDamageById;
+    if (contactEvents.hitCount > 0)
+    {
+        pendingDamageById.reserve(static_cast<std::size_t>(contactEvents.hitCount));
+    }
     for (int i = 0; i < contactEvents.hitCount; ++i)
     {
         const b2ContactHitEvent& hit = contactEvents.hitEvents[static_cast<size_t>(i)];
         const b2BodyId bodyA = b2Shape_GetBody(hit.shapeIdA);
         const b2BodyId bodyB = b2Shape_GetBody(hit.shapeIdB);
-        BodyBinding* bindingA = findBinding(bodyA);
-        BodyBinding* bindingB = findBinding(bodyB);
+        BodyBinding* bindingA = nullptr;
+        BodyBinding* bindingB = nullptr;
+
+        const auto itA = bindingByBodyId.find(bodyIdKey(bodyA));
+        if (itA != bindingByBodyId.end())
+        {
+            bindingA = itA->second;
+        }
+        const auto itB = bindingByBodyId.find(bodyIdKey(bodyB));
+        if (itB != bindingByBodyId.end())
+        {
+            bindingB = itB->second;
+        }
 
         const bool onlyAKnown = bindingA != nullptr && bindingB == nullptr;
         const bool onlyBKnown = bindingA == nullptr && bindingB != nullptr;
@@ -467,11 +642,14 @@ void PhysicsEngine::step(float dt)
             continue;
         }
 
-        events_.push_back(CollisionEvent{
-            bindingA->id,
-            bindingB->id,
-            hit.approachSpeed,
-            worldToPx({hit.point.x, hit.point.y})});
+        if (hit.approachSpeed >= kCollisionEventMinSpeedMps)
+        {
+            events_.push_back(CollisionEvent{
+                bindingA->id,
+                bindingB->id,
+                hit.approachSpeed,
+                worldToPx({hit.point.x, hit.point.y})});
+        }
 
         const float effectiveSpeed = std::max(0.0f, hit.approachSpeed - kDamageMinSpeedMps);
         if (effectiveSpeed <= 0.0f)
@@ -600,7 +778,18 @@ void PhysicsEngine::step(float dt)
         {
             continue;
         }
-        if (!b2Body_IsAwake(binding.bodyId) || !isBodyOnSurface(binding.bodyId))
+        if (!b2Body_IsAwake(binding.bodyId))
+        {
+            continue;
+        }
+
+        const b2Vec2 linearVel = b2Body_GetLinearVelocity(binding.bodyId);
+        if (std::abs(linearVel.y) > 1.2f)
+        {
+            continue;
+        }
+
+        if (!isBodyOnSurface(binding.bodyId))
         {
             continue;
         }
@@ -945,53 +1134,10 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                 else if (activeProjectileType_ == ProjectileType::Boomerang)
                 {
                     const b2Vec2 worldPos = b2Body_GetPosition(activeProjectileBodyId_);
-                    const b2Vec2 worldVel = b2Body_GetLinearVelocity(activeProjectileBodyId_);
                     const Vec2 posPx = worldToPx({worldPos.x, worldPos.y});
-                    const Vec2 velPx = worldToPx({worldVel.x, worldVel.y});
-                    const float speedPx = std::sqrt(velPx.x * velPx.x + velPx.y * velPx.y);
-                    const Vec2 aimPx = {
-                        snapshot_.slingshot.basePx.x,
-                        snapshot_.slingshot.basePx.y - 70.0f,
-                    };
-                    Vec2 toAimPx = {
-                        aimPx.x - posPx.x,
-                        aimPx.y - posPx.y,
-                    };
-                    const float toAimLen = std::sqrt(toAimPx.x * toAimPx.x + toAimPx.y * toAimPx.y);
-                    if (toAimLen > 0.001f)
-                    {
-                        toAimPx.x /= toAimLen;
-                        toAimPx.y /= toAimLen;
-                    }
-                    else
-                    {
-                        toAimPx = {-1.0f, -0.1f};
-                    }
-
-                    // Push boomerang direction lower to avoid overly horizontal return.
-                    toAimPx.y += 0.35f;
-                    const float biasedLen = std::sqrt(toAimPx.x * toAimPx.x + toAimPx.y * toAimPx.y);
-                    if (biasedLen > 0.001f)
-                    {
-                        toAimPx.x /= biasedLen;
-                        toAimPx.y /= biasedLen;
-                    }
-
-                    const float boomerangSpeedPx = std::max(speedPx * 1.35f, 650.0f);
-                    const Vec2 redirectedVelPx = {
-                        toAimPx.x * boomerangSpeedPx,
-                        toAimPx.y * boomerangSpeedPx,
-                    };
-                    const WorldVec2 redirectedVelWorld = pxToWorld(redirectedVelPx);
-                    b2Body_SetLinearVelocity(
-                        activeProjectileBodyId_,
-                        b2Vec2{redirectedVelWorld.x, redirectedVelWorld.y});
-
-                    const float cross =
-                        velPx.x * redirectedVelPx.y - velPx.y * redirectedVelPx.x;
-                    const float spinSign = cross >= 0.0f ? 1.0f : -1.0f;
-                    b2Body_SetAngularVelocity(activeProjectileBodyId_, 18.0f * spinSign);
-
+                    projectile->boomerangReturnRequested = true;
+                    projectile->boomerangReturning = false;
+                    projectile->boomerangReturnTimeSec = 0.0f;
                     activeProjectileAbilityUsed_ = true;
                     events_.push_back(AbilityActivatedEvent{
                         projectile->id,
@@ -1060,8 +1206,11 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                 else if (activeProjectileType_ == ProjectileType::Inflater)
                 {
                     constexpr float kInflatedRadiusPx = 40.0f;
-                    constexpr float kInflatedDensity = 0.75f;
-                    constexpr float kInflateSpeedDamp = 0.85f;
+                    constexpr float kInflatedDensity = 1.5f;
+                    constexpr float kInflateSpeedDamp = 0.90f;
+                    constexpr float kInflatePullRadiusPx = 170.0f;
+                    constexpr float kInflatePullImpulse = 0.72f;
+                    constexpr float kInflateMinPullFactor = 0.20f;
 
                     const EntityId projectileId = projectile->id;
                     const b2BodyId oldBodyId = activeProjectileBodyId_;
@@ -1085,8 +1234,8 @@ void PhysicsEngine::applyCommand(const Command& cmd)
 
                     b2ShapeDef shapeDef = b2DefaultShapeDef();
                     shapeDef.density = kInflatedDensity;
-                    shapeDef.friction = 0.35f;
-                    shapeDef.restitution = 0.05f;
+                    shapeDef.friction = 0.55f;
+                    shapeDef.restitution = 0.0f;
                     shapeDef.enableHitEvents = true;
 
                     b2Circle circle = {};
@@ -1100,6 +1249,51 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                             worldVel.x * kInflateSpeedDamp,
                             worldVel.y * kInflateSpeedDamp});
                     b2Body_SetAngularVelocity(inflatedBodyId, angularVel * 0.7f);
+
+                    const float pullRadiusWorld = kInflatePullRadiusPx / PIXELS_PER_METER;
+                    for (BodyBinding& candidate : bodies_)
+                    {
+                        if (B2_IS_NULL(candidate.bodyId) || !b2Body_IsValid(candidate.bodyId))
+                        {
+                            continue;
+                        }
+                        if (bodyIdEquals(candidate.bodyId, oldBodyId)
+                            || bodyIdEquals(candidate.bodyId, inflatedBodyId))
+                        {
+                            continue;
+                        }
+                        if (candidate.kind != ObjectSnapshot::Kind::Block
+                            && candidate.kind != ObjectSnapshot::Kind::Target)
+                        {
+                            continue;
+                        }
+                        if (candidate.isStatic || b2Body_GetType(candidate.bodyId) != b2_dynamicBody)
+                        {
+                            continue;
+                        }
+
+                        const b2Vec2 candidatePos = b2Body_GetPosition(candidate.bodyId);
+                        const float dx = worldPos.x - candidatePos.x;
+                        const float dy = worldPos.y - candidatePos.y;
+                        const float distance = std::sqrt(dx * dx + dy * dy);
+                        if (distance > pullRadiusWorld || distance < 0.0001f)
+                        {
+                            continue;
+                        }
+
+                        const float falloff = clampValue(
+                            1.0f - (distance / pullRadiusWorld),
+                            kInflateMinPullFactor,
+                            1.0f);
+                        const float mass = std::max(0.01f, b2Body_GetMass(candidate.bodyId));
+                        const float invDistance = 1.0f / distance;
+                        b2Body_ApplyLinearImpulseToCenter(
+                            candidate.bodyId,
+                            b2Vec2{
+                                dx * invDistance * kInflatePullImpulse * falloff * mass,
+                                dy * invDistance * kInflatePullImpulse * falloff * mass},
+                            true);
+                    }
 
                     if (B2_IS_NON_NULL(oldBodyId) && b2Body_IsValid(oldBodyId))
                     {
@@ -1362,17 +1556,13 @@ void PhysicsEngine::createBlockBody(const BlockData& block)
     Vec2 adjustedPositionPx = block.positionPx;
     adjustedPositionPx.y += levelYOffsetPx_;
 
-    const float originalBottomPx = isCircle
-        ? block.positionPx.y + block.radiusPx
-        : block.positionPx.y + (block.sizePx.y * 0.5f);
+    const float bottomOffsetPx = computeBottomOffsetPx(block);
+    const float originalBottomPx = block.positionPx.y + bottomOffsetPx;
 
     // Force support blocks ("legs") to start exactly on the floor level.
     if (std::abs(originalBottomPx - supportBottomPx_) < 0.5f)
     {
-        const float halfHeightPx = isCircle
-            ? block.radiusPx
-            : (block.sizePx.y * 0.5f);
-        adjustedPositionPx.y = groundTopYpx_ - halfHeightPx;
+        adjustedPositionPx.y = groundTopYpx_ - bottomOffsetPx;
     }
     const WorldVec2 blockPosWorld = pxToWorld(adjustedPositionPx);
     bodyDef.position = b2Vec2{blockPosWorld.x, blockPosWorld.y};
@@ -1395,24 +1585,47 @@ void PhysicsEngine::createBlockBody(const BlockData& block)
     }
     else if (isTriangle)
     {
-        const float halfWidthM = (block.sizePx.x * 0.5f) / PIXELS_PER_METER;
-        const float halfHeightM = (block.sizePx.y * 0.5f) / PIXELS_PER_METER;
-        const b2Vec2 vertices[3] = {
-            b2Vec2{-halfWidthM, halfHeightM},
-            b2Vec2{halfWidthM, halfHeightM},
-            b2Vec2{0.0f, -halfHeightM},
-        };
+        bool createdFromVertices = false;
+        if (block.triangleLocalVerticesPx.size() == 3)
+        {
+            b2Vec2 vertices[3] = {};
+            for (std::size_t i = 0; i < 3; ++i)
+            {
+                vertices[i] = b2Vec2{
+                    block.triangleLocalVerticesPx[i].x / PIXELS_PER_METER,
+                    block.triangleLocalVerticesPx[i].y / PIXELS_PER_METER};
+            }
 
-        const b2Hull hull = b2ComputeHull(vertices, 3);
-        if (hull.count == 3 && b2ValidateHull(&hull))
-        {
-            const b2Polygon triangle = b2MakePolygon(&hull, 0.0f);
-            b2CreatePolygonShape(bodyId, &shapeDef, &triangle);
+            const b2Hull hull = b2ComputeHull(vertices, 3);
+            if (hull.count == 3 && b2ValidateHull(&hull))
+            {
+                const b2Polygon triangle = b2MakePolygon(&hull, 0.0f);
+                b2CreatePolygonShape(bodyId, &shapeDef, &triangle);
+                createdFromVertices = true;
+            }
         }
-        else
+
+        if (!createdFromVertices)
         {
-            const b2Polygon fallbackBox = b2MakeBox(halfWidthM, halfHeightM);
-            b2CreatePolygonShape(bodyId, &shapeDef, &fallbackBox);
+            const float halfWidthM = (block.sizePx.x * 0.5f) / PIXELS_PER_METER;
+            const float halfHeightM = (block.sizePx.y * 0.5f) / PIXELS_PER_METER;
+            const b2Vec2 vertices[3] = {
+                b2Vec2{-halfWidthM, halfHeightM},
+                b2Vec2{halfWidthM, halfHeightM},
+                b2Vec2{0.0f, -halfHeightM},
+            };
+
+            const b2Hull hull = b2ComputeHull(vertices, 3);
+            if (hull.count == 3 && b2ValidateHull(&hull))
+            {
+                const b2Polygon triangle = b2MakePolygon(&hull, 0.0f);
+                b2CreatePolygonShape(bodyId, &shapeDef, &triangle);
+            }
+            else
+            {
+                const b2Polygon fallbackBox = b2MakeBox(halfWidthM, halfHeightM);
+                b2CreatePolygonShape(bodyId, &shapeDef, &fallbackBox);
+            }
         }
     }
     else
@@ -1431,6 +1644,7 @@ void PhysicsEngine::createBlockBody(const BlockData& block)
     binding.radiusPx = block.radiusPx;
     binding.material = block.material;
     binding.shape = block.shape;
+    binding.triangleLocalVerticesPx = block.triangleLocalVerticesPx;
     binding.hp = std::max(1.0f, block.hp);
     binding.maxHp = binding.hp;
     binding.isStatic = block.isStatic;
@@ -1530,7 +1744,7 @@ b2BodyId PhysicsEngine::createProjectileBody(ProjectileType type, const Vec2& sp
     b2ShapeDef shapeDef = b2DefaultShapeDef();
     shapeDef.density = density;
     shapeDef.friction = 0.35f;
-    shapeDef.restitution = 0.05f;
+    shapeDef.restitution = 0.08f;
     shapeDef.enableHitEvents = true;
 
     b2Circle circle = {};
@@ -1553,6 +1767,28 @@ b2BodyId PhysicsEngine::createProjectileBody(ProjectileType type, const Vec2& sp
     binding.maxHp = 1.0f;
     binding.lastPositionPx = spawnPx;
     binding.lastAngleDeg = 0.0f;
+    if (type == ProjectileType::Boomerang)
+    {
+        binding.boomerangStartPx = spawnPx;
+        const float speedPx = std::sqrt(
+            launchVelocityPx.x * launchVelocityPx.x + launchVelocityPx.y * launchVelocityPx.y);
+        if (speedPx > 0.001f)
+        {
+            binding.boomerangLaunchDir = {
+                launchVelocityPx.x / speedPx,
+                launchVelocityPx.y / speedPx,
+            };
+        }
+        else
+        {
+            binding.boomerangLaunchDir = {1.0f, 0.0f};
+        }
+        binding.boomerangTimeSinceLaunchSec = 0.0f;
+        binding.boomerangReturnTimeSec = 0.0f;
+        binding.boomerangCurveSign = 1.0f;
+        binding.boomerangReturnRequested = false;
+        binding.boomerangReturning = false;
+    }
     bodies_.push_back(binding);
 
     return bodyId;
@@ -1623,6 +1859,7 @@ void PhysicsEngine::refreshSnapshot()
         object.material = binding.material;
         object.projectileType = binding.projectileType;
         object.shape = binding.shape;
+        object.triangleLocalVerticesPx = binding.triangleLocalVerticesPx;
         object.isStatic = binding.isStatic;
         object.hpNormalized = clampValue(binding.hp / std::max(1.0f, binding.maxHp), 0.0f, 1.0f);
 

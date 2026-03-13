@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <thread>
+#include <mutex>
 
 namespace angry
 {
@@ -111,7 +112,13 @@ platform::http::Response performRequestWithRetry( const char* opName, RequestFn&
 OnlineScoreClient::OnlineScoreClient(std::string baseUrl)
     : baseUrl_( resolveBackendUrl( std::move( baseUrl ) ) )
 {
-    Logger::info( "OnlineScoreClient backend URL: {}", baseUrl_ );
+    static std::once_flag logBackendUrlOnce;
+    std::call_once(
+        logBackendUrlOnce,
+        [this]()
+        {
+            Logger::info( "OnlineScoreClient backend URL: {}", baseUrl_ );
+        } );
 }
 
 bool OnlineScoreClient::submitScore(

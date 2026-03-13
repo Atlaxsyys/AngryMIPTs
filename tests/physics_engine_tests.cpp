@@ -277,6 +277,68 @@ TEST( PhysicsEngineScore, BlockScoreByMaterial )
     }
 }
 
+TEST( PhysicsEngineTriangles, SnapshotKeepsAsymmetricTriangleVertices )
+{
+    PhysicsEngine engine;
+
+    BlockData triangle{
+        Vec2{520.0f, 440.0f},
+        Vec2{70.0f, 70.0f},
+        0.0f,
+        angry::BlockShape::Triangle,
+        false,
+        false,
+        18.0f,
+        Material::Stone,
+        60.0f };
+    triangle.triangleLocalVerticesPx = {
+        Vec2{-23.0f, -35.0f},
+        Vec2{47.0f, 35.0f},
+        Vec2{-23.0f, 35.0f},
+    };
+
+    const TargetData farTarget{
+        Vec2{1100.0f, 450.0f},
+        12.0f,
+        999.0f,
+        100 };
+
+    const LevelData level = makeLevel(
+        500,
+        {ProjectileType::Standard},
+        {triangle},
+        {farTarget},
+        200,
+        300 );
+
+    engine.loadLevel( level );
+
+    // Step a few frames to ensure triangle body is stable in simulation.
+    for ( int i = 0; i < 10; ++i )
+    {
+        runCommandsAndStep( engine, {} );
+    }
+
+    const auto snapshot = engine.getSnapshot();
+    auto blockIt = std::find_if(
+        snapshot.objects.begin(),
+        snapshot.objects.end(),
+        []( const ObjectSnapshot& object )
+        {
+            return object.kind == ObjectSnapshot::Kind::Block;
+        } );
+
+    ASSERT_NE( blockIt, snapshot.objects.end() );
+    EXPECT_EQ( blockIt->shape, angry::BlockShape::Triangle );
+    ASSERT_EQ( blockIt->triangleLocalVerticesPx.size(), 3u );
+    EXPECT_FLOAT_EQ( blockIt->triangleLocalVerticesPx[0].x, -23.0f );
+    EXPECT_FLOAT_EQ( blockIt->triangleLocalVerticesPx[0].y, -35.0f );
+    EXPECT_FLOAT_EQ( blockIt->triangleLocalVerticesPx[1].x, 47.0f );
+    EXPECT_FLOAT_EQ( blockIt->triangleLocalVerticesPx[1].y, 35.0f );
+    EXPECT_FLOAT_EQ( blockIt->triangleLocalVerticesPx[2].x, -23.0f );
+    EXPECT_FLOAT_EQ( blockIt->triangleLocalVerticesPx[2].y, 35.0f );
+}
+
 TEST( PhysicsEngineEvents, AbilityActivatedEventForAllAbilityProjectiles )
 {
     const std::vector<ProjectileType> abilityProjectiles = {
@@ -321,4 +383,3 @@ TEST( PhysicsEngineEvents, AbilityActivatedEventForAllAbilityProjectiles )
             << static_cast<int>( projectileType );
     }
 }
-

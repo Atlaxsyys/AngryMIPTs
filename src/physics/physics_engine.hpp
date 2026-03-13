@@ -38,6 +38,7 @@ private:
         float radiusPx = 0.0f;
         Material material = Material::Wood;
         BlockShape shape = BlockShape::Rect;
+        std::vector<Vec2> triangleLocalVerticesPx;
         float hp = 1.0f;
         float maxHp = 1.0f;
         bool isStatic = false;
@@ -50,6 +51,13 @@ private:
         ProjectileType projectileType = ProjectileType::Standard;
         int settledFrames = 0;
         float settledTimeSec = 0.0f;
+        Vec2 boomerangStartPx{};
+        Vec2 boomerangLaunchDir{};
+        float boomerangTimeSinceLaunchSec = 0.0f;
+        float boomerangReturnTimeSec = 0.0f;
+        float boomerangCurveSign = 1.0f;
+        bool boomerangReturnRequested = false;
+        bool boomerangReturning = false;
     };
 
     void applyCommand(const Command& cmd);
