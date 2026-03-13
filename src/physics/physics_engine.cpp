@@ -1335,9 +1335,9 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                 }
                 else if (activeProjectileType_ == ProjectileType::Bomber)
                 {
-                    constexpr float kExplosionRadiusPx = 90.0f;
+                    constexpr float kExplosionRadiusPx = 124.2f;
                     constexpr float kExplosionMaxDamage = 60.0f;
-                    constexpr float kExplosionImpulse = 5.0f;
+                    constexpr float kExplosionImpulse = 6.5f;
                     constexpr float kExplosionCloseRangeLimiter = 0.85f;
 
                     const EntityId bomberId = projectile->id;
