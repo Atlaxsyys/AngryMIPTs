@@ -6,6 +6,11 @@
 
 #ifndef __EMSCRIPTEN__
 #include <cpr/cpr.h>
+#else
+#include <emscripten/fetch.h>
+#include <cctype>
+#include <cstdio>
+#include <cstring>
 #endif
 
 namespace platform::http
@@ -95,32 +100,146 @@ inline Response get( const std::string& url,
 
 #else
 
-// Web stub for Phase 5.
-// We intentionally return a deterministic network error while we migrate to
-// emscripten_fetch callback-based flow.
-inline Response post( const std::string& /*url*/,
-                      const std::string& /*body*/,
-                      const Headers& /*headers*/,
-                      int /*timeout_ms*/ )
+inline std::string url_encode_component( const std::string& value )
 {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+
+    std::string encoded;
+    encoded.reserve( value.size() * 3 );
+
+    for ( unsigned char ch : value )
+    {
+        if ( std::isalnum( ch ) || ch == '-' || ch == '_' || ch == '.' || ch == '~' )
+        {
+            encoded.push_back( static_cast<char> ( ch ) );
+        }
+        else
+        {
+            encoded.push_back( '%' );
+            encoded.push_back( kHex[( ch >> 4 ) & 0x0F] );
+            encoded.push_back( kHex[ch & 0x0F] );
+        }
+    }
+
+    return encoded;
+}
+
+inline std::string with_query_params( const std::string& url, const QueryParams& query_params )
+{
+    if ( query_params.empty() )
+    {
+        return url;
+    }
+
+    std::string full_url = url;
+    full_url.push_back( '?' );
+
+    for ( std::size_t i = 0; i < query_params.size(); ++i )
+    {
+        if ( i > 0 )
+        {
+            full_url.push_back( '&' );
+        }
+
+        full_url += url_encode_component( query_params[i].first );
+        full_url.push_back( '=' );
+        full_url += url_encode_component( query_params[i].second );
+    }
+
+    return full_url;
+}
+
+inline std::vector<const char*> flatten_headers( const Headers& headers,
+                                                 std::vector<std::string>* storage )
+{
+    std::vector<const char*> flat;
+    flat.reserve( headers.size() * 2 + 1 );
+    storage->reserve( headers.size() * 2 );
+
+    for ( const auto& [key, value] : headers )
+    {
+        storage->push_back( key );
+        storage->push_back( value );
+        flat.push_back( storage->at( storage->size() - 2 ).c_str() );
+        flat.push_back( storage->at( storage->size() - 1 ).c_str() );
+    }
+    flat.push_back( nullptr );
+    return flat;
+}
+
+inline Response fetch_sync( const std::string& method,
+                            const std::string& url,
+                            const std::string& body,
+                            const Headers& headers,
+                            int timeout_ms )
+{
+    emscripten_fetch_attr_t attr;
+    emscripten_fetch_attr_init( &attr );
+    std::snprintf( attr.requestMethod, sizeof( attr.requestMethod ), "%s", method.c_str() );
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
+    attr.timeoutMSecs = timeout_ms;
+
+    std::vector<std::string> header_storage;
+    std::vector<const char*> flat_headers = flatten_headers( headers, &header_storage );
+    attr.requestHeaders = flat_headers.data();
+
+    std::string request_body = body;
+    if ( method == "POST" )
+    {
+        attr.requestData = request_body.empty() ? nullptr : request_body.c_str();
+        attr.requestDataSize = request_body.size();
+    }
+
+    emscripten_fetch_t* fetch = emscripten_fetch( &attr, url.c_str() );
+
     Response response;
-    response.network_error = true;
-    response.error_message = "http unavailable in web build (phase5 stub)";
+    if ( fetch == nullptr )
+    {
+        response.network_error = true;
+        response.error_message = "emscripten_fetch returned nullptr";
+        return response;
+    }
+
+    response.status_code = static_cast<int> ( fetch->status );
+    if ( fetch->data != nullptr && fetch->numBytes > 0 )
+    {
+        response.body.assign( fetch->data, static_cast<std::size_t> ( fetch->numBytes ) );
+    }
+
+    if ( fetch->status == 0 )
+    {
+        response.network_error = true;
+        if ( fetch->statusText[0] != '\0' )
+        {
+            response.error_message = fetch->statusText;
+        }
+        else
+        {
+            response.error_message = "network error";
+        }
+    }
+
+    emscripten_fetch_close( fetch );
     return response;
 }
 
-inline Response get( const std::string& /*url*/,
-                     const QueryParams& /*query_params*/,
-                     const Headers& /*headers*/,
-                     int /*timeout_ms*/ )
+inline Response post( const std::string& url,
+                      const std::string& body,
+                      const Headers& headers,
+                      int timeout_ms )
 {
-    Response response;
-    response.network_error = true;
-    response.error_message = "http unavailable in web build (phase5 stub)";
-    return response;
+    return fetch_sync( "POST", url, body, headers, timeout_ms );
+}
+
+inline Response get( const std::string& url,
+                     const QueryParams& query_params,
+                     const Headers& headers,
+                     int timeout_ms )
+{
+    const std::string full_url = with_query_params( url, query_params );
+    return fetch_sync( "GET", full_url, std::string {}, headers, timeout_ms );
 }
 
 #endif
 
 }  // namespace platform::http
-

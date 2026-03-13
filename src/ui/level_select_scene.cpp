@@ -108,12 +108,19 @@ void LevelSelectScene::load_data ( const std::string& levels_dir,
         Logger::error ( "LevelSelectScene: failed to load levels meta: {}", e.what() );
     }
 
-    try
+    if ( !scores_path_.empty() )
     {
-        ScoreSaver saver;
-        scores_ = saver.loadScores ( scores_path_ );
+        try
+        {
+            ScoreSaver saver;
+            scores_ = saver.loadScores ( scores_path_ );
+        }
+        catch ( const std::exception& )
+        {
+            scores_.clear();
+        }
     }
-    catch ( const std::exception& )
+    else
     {
         scores_.clear();
     }

@@ -101,7 +101,7 @@ struct WebApp
 {
     platform::Window        window;
     platform::Font          font;
-    angry::AccountService   accounts { "session.json" };
+    angry::AccountService   accounts { "" };
     angry::SceneManager     scenes;
 };
 
@@ -135,10 +135,14 @@ int main()
     g_app = new WebApp();
     auto& app = *g_app;
 
+    const std::string fontPath = "/assets/fonts/liberation_sans.ttf";
+    const std::string levelsPath = "/levels";
+    const std::string scoresPath;   // disabled on web (no persistent local file storage yet)
+
     app.window.create( 1280, 720, "AngryMipts" );
     app.window.setFramerateLimit( 60 );
 
-    if ( !app.font.openFromFile( "assets/fonts/liberation_sans.ttf" ) )
+    if ( !app.font.openFromFile( fontPath ) )
     {
         std::cerr << "Failed to load font" << std::endl;
         return 1;
@@ -147,7 +151,7 @@ int main()
     app.accounts.loadSession();
 
     auto level_select = std::make_unique<angry::LevelSelectScene>( app.font, &app.accounts );
-    level_select->load_data( "levels", "scores.json" );
+    level_select->load_data( levelsPath, scoresPath );
 
     app.scenes.add_scene( angry::SceneId::Login,
                           std::make_unique<angry::LoginScene>( app.font, app.accounts ) );
