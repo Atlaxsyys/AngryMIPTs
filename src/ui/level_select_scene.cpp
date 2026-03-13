@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <thread>
 
 namespace angry
 {
@@ -29,13 +30,41 @@ void draw_vertical_gradient ( sf::RenderWindow& window,
 LevelSelectScene::LevelSelectScene ( const sf::Font& font, AccountService* accounts )
     : accounts_ ( accounts )
     , font_ ( font )
-    , title_ ( font_, "Select Level", 42 )
+    , title_ ( font_, "Select Level", 28 )
     , prompt_ ( font_, "[Enter] Play   [Backspace] Menu   [Scroll] Navigate", 18 )
     , badge_text_ ( font_, "", 18 )
     , badge_btn_ ( font_, "", 16 )
 {
     title_.setFillColor ( sf::Color::White );
     prompt_.setFillColor ( sf::Color ( 230, 245, 255 ) );
+}
+
+void LevelSelectScene::fetch_preview ( int level_id )
+{
+    if ( preview_requested_id_ == level_id )
+        return;
+    preview_requested_id_ = level_id;
+    preview_scroll_       = 0.f;
+
+    // Reset preview while fetching
+    {
+        std::lock_guard<std::mutex> lock ( preview_->mutex );
+        preview_->fetched_level_id = -1;
+        preview_->fetch_status     = LeaderboardFetchStatus::Unavailable;
+        preview_->entries.clear();
+    }
+
+    const std::shared_ptr<PreviewState> state = preview_;
+    std::thread ( [state, level_id]()
+    {
+        OnlineScoreClient client;
+        LeaderboardFetchResult r = client.fetchLeaderboardWithStatus ( level_id );
+
+        std::lock_guard<std::mutex> lock ( state->mutex );
+        state->fetched_level_id = level_id;
+        state->fetch_status     = r.status;
+        state->entries          = std::move ( r.entries );
+    } ).detach();
 }
 
 void LevelSelectScene::load_data ( const std::string& levels_dir,
@@ -60,12 +89,14 @@ void LevelSelectScene::load_data ( const std::string& levels_dir,
     }
     catch ( const std::exception& )
     {
-        // Scores file may not exist yet — that is fine
         scores_.clear();
     }
 
     selected_ = 0;
     rebuild_texts();
+
+    if ( !levels_.empty() )
+        fetch_preview ( levels_[0].id );
 }
 
 void LevelSelectScene::reload_scores()
@@ -115,7 +146,7 @@ void LevelSelectScene::rebuild_texts()
         if ( score && score->bestScore > 0 )
             label += "  " + std::to_string ( score->bestScore ) + " pts";
 
-        sf::Text text ( font_, label, 26 );
+        sf::Text text ( font_, label, 24 );
         text.setFillColor ( i == selected_ ? sf::Color ( 255, 220, 50 )
                                            : sf::Color::White );
         level_texts_.push_back ( std::move ( text ) );
@@ -132,15 +163,21 @@ SceneId LevelSelectScene::handle_input ( const sf::Event& event )
         if ( key->code == sf::Keyboard::Key::Up )
         {
             if ( selected_ > 0 )
+            {
                 --selected_;
-            rebuild_texts();
+                rebuild_texts();
+                fetch_preview ( levels_[selected_].id );
+            }
         }
 
         if ( key->code == sf::Keyboard::Key::Down )
         {
             if ( selected_ < static_cast<int> ( levels_.size() ) - 1 )
+            {
                 ++selected_;
-            rebuild_texts();
+                rebuild_texts();
+                fetch_preview ( levels_[selected_].id );
+            }
         }
 
         if ( key->code == sf::Keyboard::Key::Enter && !levels_.empty() )
@@ -156,6 +193,12 @@ SceneId LevelSelectScene::handle_input ( const sf::Event& event )
             else
                 return SceneId::Login;
         }
+
+        // Preview panel leaderboard scroll
+        if ( key->code == sf::Keyboard::Key::PageUp )
+            preview_scroll_ = std::max ( 0.f, preview_scroll_ - 72.f );
+        if ( key->code == sf::Keyboard::Key::PageDown )
+            preview_scroll_ += 72.f;
     }
 
     if ( const auto* wheel = event.getIf<sf::Event::MouseWheelScrolled>() )
@@ -193,35 +236,48 @@ void LevelSelectScene::render ( sf::RenderWindow& window )
     glow_b.setFillColor ( sf::Color ( 255, 236, 170, 18 ) );
     window.draw ( glow_b );
 
-    sf::RectangleShape panel ( {ws.x * 0.64f, ws.y * 0.62f} );
-    panel.setOrigin ( {panel.getSize().x * 0.5f, panel.getSize().y * 0.5f} );
-    panel.setPosition ( {ws.x * 0.5f, ws.y * 0.5f} );
-    panel.setFillColor ( sf::Color ( 8, 16, 30, 138 ) );
-    panel.setOutlineThickness ( 2.5f );
-    panel.setOutlineColor ( sf::Color ( 188, 220, 244, 128 ) );
-    window.draw ( panel );
+    // ── Layout ──────────────────────────────────────────────────────────────
+    const float margin    = ws.x * 0.015f;
+    const float gap       = ws.x * 0.015f;
+    const float left_w    = ws.x * 0.42f;
+    const float right_w   = ws.x - margin * 2.f - left_w - gap;
+    const float panel_top = ws.y * 0.10f;
+    const float panel_h   = ws.y * 0.78f;
+    const float left_cx   = margin + left_w * 0.5f;
+    const float right_x   = margin + left_w + gap;
+    const float right_cx  = right_x + right_w * 0.5f;
 
-    sf::RectangleShape panel_accent ( {panel.getSize().x - 10.f, 6.f} );
-    panel_accent.setOrigin ( {panel_accent.getSize().x * 0.5f, 0.f} );
-    panel_accent.setPosition ( {panel.getPosition().x, panel.getPosition().y - panel.getSize().y * 0.5f + 8.f} );
-    panel_accent.setFillColor ( sf::Color ( 132, 200, 255, 145 ) );
-    window.draw ( panel_accent );
+    // ── Left panel — level list ─────────────────────────────────────────────
+    {
+        sf::RectangleShape panel ( {left_w, panel_h} );
+        panel.setPosition ( {margin, panel_top} );
+        panel.setFillColor ( sf::Color ( 8, 16, 30, 138 ) );
+        panel.setOutlineThickness ( 2.5f );
+        panel.setOutlineColor ( sf::Color ( 188, 220, 244, 128 ) );
+        window.draw ( panel );
 
+        sf::RectangleShape accent ( {left_w - 10.f, 6.f} );
+        accent.setPosition ( {margin + 5.f, panel_top + 8.f} );
+        accent.setFillColor ( sf::Color ( 132, 200, 255, 145 ) );
+        window.draw ( accent );
+    }
+
+    // Title
     title_.setStyle ( sf::Text::Bold );
     auto title_bounds = title_.getLocalBounds();
     title_.setOrigin ( {title_bounds.position.x + title_bounds.size.x / 2.f,
                         title_bounds.position.y + title_bounds.size.y / 2.f} );
-    title_.setPosition ( {ws.x / 2.f, ws.y * 0.12f} );
+    title_.setPosition ( {left_cx, panel_top + 28.f} );
     window.draw ( title_ );
 
-    const float step        = 52.f;
-    const float list_top    = ws.y * 0.22f;
-    const float list_bottom = ws.y * 0.79f;  // panel bottom is ws.y*0.81, keep margin
+    // Scrollable list
+    const float step        = 48.f;
+    const float list_top    = panel_top + 60.f;
+    const float list_bottom = panel_top + panel_h - 44.f;
     const float list_h      = list_bottom - list_top;
     const float total_h     = static_cast<float> ( level_texts_.size() ) * step;
     const float max_scroll  = std::max ( 0.f, total_h - list_h );
 
-    // Auto-follow selected item
     const float sel_y_local = static_cast<float> ( selected_ ) * step + step * 0.5f;
     if ( sel_y_local - scroll_offset_ < step )
         scroll_offset_ = std::max ( 0.f, sel_y_local - step );
@@ -229,7 +285,6 @@ void LevelSelectScene::render ( sf::RenderWindow& window )
         scroll_offset_ = std::min ( max_scroll, sel_y_local - list_h + step );
     scroll_offset_ = std::clamp ( scroll_offset_, 0.f, max_scroll );
 
-    // Clip list area via scissor view
     const sf::FloatRect list_rect ( {0.f, list_top}, {ws.x, list_h} );
     sf::View list_view ( list_rect );
     list_view.setViewport ( sf::FloatRect (
@@ -239,18 +294,17 @@ void LevelSelectScene::render ( sf::RenderWindow& window )
 
     for ( int i = 0; i < static_cast<int> ( level_texts_.size() ); ++i )
     {
-        const float y       = list_top + static_cast<float> ( i ) * step + step * 0.5f - scroll_offset_;
-        const bool  is_sel  = ( i == selected_ );
+        const float y      = list_top + static_cast<float> ( i ) * step + step * 0.5f - scroll_offset_;
+        const bool  is_sel = ( i == selected_ );
 
-        // Skip items outside visible area
         if ( y + step < list_top || y - step > list_bottom )
             continue;
 
         if ( is_sel )
         {
-            sf::RectangleShape highlight ( {panel.getSize().x * 0.86f, 42.f} );
-            highlight.setOrigin ( {highlight.getSize().x * 0.5f, highlight.getSize().y * 0.5f} );
-            highlight.setPosition ( {ws.x * 0.5f + std::sin ( t * 5.0f ) * 2.f, y} );
+            sf::RectangleShape highlight ( {left_w - 20.f, 40.f} );
+            highlight.setOrigin ( {( left_w - 20.f ) * 0.5f, 20.f} );
+            highlight.setPosition ( {left_cx + std::sin ( t * 5.0f ) * 2.f, y} );
             highlight.setFillColor ( sf::Color ( 244, 214, 98,
                                                  static_cast<uint8_t> ( 62.f + 52.f * pulse ) ) );
             highlight.setOutlineThickness ( 1.5f );
@@ -264,26 +318,217 @@ void LevelSelectScene::render ( sf::RenderWindow& window )
         auto bounds = text.getLocalBounds();
         text.setOrigin ( {bounds.position.x + bounds.size.x / 2.f,
                           bounds.position.y + bounds.size.y / 2.f} );
-        text.setPosition ( {ws.x / 2.f, y} );
+        text.setPosition ( {left_cx, y} );
         window.draw ( text );
     }
 
     window.setView ( window.getDefaultView() );
 
+    // Prompt bottom
     prompt_.setFillColor ( sf::Color ( 232, 246, 255,
                                        static_cast<uint8_t> ( 180.f + 70.f * pulse ) ) );
     auto prompt_bounds = prompt_.getLocalBounds();
     prompt_.setOrigin ( {prompt_bounds.position.x + prompt_bounds.size.x / 2.f,
                          prompt_bounds.position.y + prompt_bounds.size.y / 2.f} );
-    prompt_.setPosition ( {ws.x / 2.f, ws.y * 0.88f} );
+    prompt_.setPosition ( {left_cx, panel_top + panel_h - 22.f} );
     window.draw ( prompt_ );
 
-    // --- Account badge (top-right) ---
-    const float badge_right = ws.x - 18.f;
-    const float badge_top   = 14.f;
+    // ── Right panel — Preview ───────────────────────────────────────────────
+    {
+        sf::RectangleShape panel ( {right_w, panel_h} );
+        panel.setPosition ( {right_x, panel_top} );
+        panel.setFillColor ( sf::Color ( 8, 14, 26, 148 ) );
+        panel.setOutlineThickness ( 2.f );
+        panel.setOutlineColor ( sf::Color ( 80, 140, 220, 110 ) );
+        window.draw ( panel );
 
-    const float pill_w = 280.f;
-    const float pill_h = 54.f;
+        sf::RectangleShape accent ( {right_w - 8.f, 5.f} );
+        accent.setPosition ( {right_x + 4.f, panel_top + 8.f} );
+        accent.setFillColor ( sf::Color ( 80, 160, 255, 145 ) );
+        window.draw ( accent );
+    }
+
+    if ( !levels_.empty() )
+    {
+        const auto& meta  = levels_[selected_];
+        const LevelScore* local_score = find_score ( meta.id );
+        float cy = panel_top + 36.f;
+
+        // Level name
+        {
+            sf::Text name_text ( font_, meta.name, 28 );
+            name_text.setStyle ( sf::Text::Bold );
+            name_text.setFillColor ( sf::Color ( 230, 245, 255 ) );
+            auto b = name_text.getLocalBounds();
+            name_text.setOrigin ( {b.position.x + b.size.x / 2.f,
+                                   b.position.y + b.size.y / 2.f} );
+            name_text.setPosition ( {right_cx, cy} );
+            window.draw ( name_text );
+            cy += 44.f;
+        }
+
+        // Local best score
+        {
+            std::string local_str = "Local best: ";
+            if ( local_score && local_score->bestScore > 0 )
+            {
+                local_str += std::to_string ( local_score->bestScore ) + " pts  "
+                           + std::string ( static_cast<std::size_t> ( local_score->bestStars ), '*' );
+            }
+            else
+            {
+                local_str += "not played";
+            }
+
+            sf::Text local_text ( font_, local_str, 18 );
+            local_text.setFillColor ( sf::Color ( 180, 220, 255 ) );
+            auto b = local_text.getLocalBounds();
+            local_text.setOrigin ( {b.position.x + b.size.x / 2.f,
+                                    b.position.y + b.size.y / 2.f} );
+            local_text.setPosition ( {right_cx, cy} );
+            window.draw ( local_text );
+            cy += 30.f;
+        }
+
+        // Divider
+        {
+            sf::RectangleShape div ( {right_w - 30.f, 1.f} );
+            div.setPosition ( {right_x + 15.f, cy} );
+            div.setFillColor ( sf::Color ( 80, 130, 200, 80 ) );
+            window.draw ( div );
+            cy += 10.f;
+        }
+
+        // Online leaderboard header
+        {
+            sf::Text lb_hdr ( font_, "Online Leaderboard", 20 );
+            lb_hdr.setStyle ( sf::Text::Bold );
+            lb_hdr.setFillColor ( sf::Color ( 200, 225, 255 ) );
+            auto b = lb_hdr.getLocalBounds();
+            lb_hdr.setOrigin ( {b.position.x + b.size.x / 2.f,
+                                b.position.y + b.size.y / 2.f} );
+            lb_hdr.setPosition ( {right_cx, cy} );
+            window.draw ( lb_hdr );
+            cy += 32.f;
+        }
+
+        // Read preview state
+        LeaderboardFetchStatus fetch_status;
+        std::vector<LeaderboardEntry> entries;
+        int fetched_id;
+        {
+            std::lock_guard<std::mutex> lock ( preview_->mutex );
+            fetch_status = preview_->fetch_status;
+            entries      = preview_->entries;
+            fetched_id   = preview_->fetched_level_id;
+        }
+
+        const float lb_top    = cy;
+        const float lb_bottom = panel_top + panel_h - 14.f;
+        const float lb_h      = lb_bottom - lb_top;
+        const float row_step  = 34.f;
+
+        if ( fetched_id != meta.id )
+        {
+            // Still loading
+            sf::Text loading ( font_, "Loading...", 17 );
+            loading.setFillColor ( sf::Color ( 160, 190, 220, 160 ) );
+            auto b = loading.getLocalBounds();
+            loading.setOrigin ( {b.position.x + b.size.x / 2.f,
+                                 b.position.y + b.size.y / 2.f} );
+            loading.setPosition ( {right_cx, lb_top + lb_h * 0.4f} );
+            window.draw ( loading );
+        }
+        else if ( fetch_status == LeaderboardFetchStatus::Empty || entries.empty() )
+        {
+            sf::Text msg ( font_,
+                fetch_status == LeaderboardFetchStatus::Empty ? "No scores yet"
+                                                              : "Leaderboard unavailable", 17 );
+            msg.setFillColor ( sf::Color ( 160, 190, 220, 180 ) );
+            auto b = msg.getLocalBounds();
+            msg.setOrigin ( {b.position.x + b.size.x / 2.f,
+                             b.position.y + b.size.y / 2.f} );
+            msg.setPosition ( {right_cx, lb_top + lb_h * 0.4f} );
+            window.draw ( msg );
+        }
+        else
+        {
+            const float total_lb_h = static_cast<float> ( entries.size() ) * row_step;
+            const float max_sc     = std::max ( 0.f, total_lb_h - lb_h );
+            preview_scroll_ = std::clamp ( preview_scroll_, 0.f, max_sc );
+
+            sf::View lb_view ( sf::FloatRect ( {0.f, lb_top}, {ws.x, lb_h} ) );
+            lb_view.setViewport ( sf::FloatRect (
+                {0.f, lb_top / ws.y},
+                {1.f, lb_h  / ws.y} ) );
+            window.setView ( lb_view );
+
+            for ( std::size_t i = 0; i < entries.size(); ++i )
+            {
+                const float y = lb_top + static_cast<float> ( i ) * row_step
+                                + row_step * 0.5f - preview_scroll_;
+
+                if ( y + row_step < lb_top || y - row_step > lb_bottom )
+                    continue;
+
+                const LeaderboardEntry& entry = entries[i];
+                const std::string name = entry.playerName.empty() ? "Player" : entry.playerName;
+
+                if ( i < 3 )
+                {
+                    static const sf::Color rank_colors[3] = {
+                        sf::Color ( 255, 210, 40, 48 ),
+                        sf::Color ( 210, 215, 220, 34 ),
+                        sf::Color ( 200, 140, 80, 34 ),
+                    };
+                    sf::RectangleShape row_bg ( {right_w - 16.f, row_step - 4.f} );
+                    row_bg.setOrigin ( {( right_w - 16.f ) * 0.5f, ( row_step - 4.f ) * 0.5f} );
+                    row_bg.setPosition ( {right_cx, y} );
+                    row_bg.setFillColor ( rank_colors[i] );
+                    window.draw ( row_bg );
+                }
+
+                const std::string label =
+                    std::to_string ( static_cast<int> ( i + 1u ) ) + ". "
+                    + name
+                    + "  " + std::to_string ( entry.score ) + " pts"
+                    + "  " + std::string ( static_cast<std::size_t> ( std::clamp ( entry.stars, 0, 3 ) ), '*' );
+
+                sf::Text row ( font_, label, 16 );
+                if      ( i == 0 ) row.setFillColor ( sf::Color ( 255, 220, 60 ) );
+                else if ( i == 1 ) row.setFillColor ( sf::Color ( 210, 218, 228 ) );
+                else if ( i == 2 ) row.setFillColor ( sf::Color ( 210, 155, 95 ) );
+                else               row.setFillColor ( sf::Color ( 200, 218, 238 ) );
+
+                auto b = row.getLocalBounds();
+                row.setOrigin ( {b.position.x + b.size.x / 2.f,
+                                 b.position.y + b.size.y / 2.f} );
+                row.setPosition ( {right_cx, y} );
+                window.draw ( row );
+            }
+
+            window.setView ( window.getDefaultView() );
+
+            if ( total_lb_h > lb_h )
+            {
+                sf::Text hint ( font_, "[PgUp/PgDn] scroll leaderboard", 13 );
+                hint.setFillColor ( sf::Color ( 140, 175, 210, 140 ) );
+                auto b = hint.getLocalBounds();
+                hint.setOrigin ( {b.position.x + b.size.x / 2.f, b.position.y} );
+                hint.setPosition ( {right_cx, lb_bottom + 2.f} );
+                window.draw ( hint );
+            }
+        }
+    }
+
+    window.setView ( window.getDefaultView() );
+
+    // ── Account badge (top-right) ───────────────────────────────────────────
+    const float badge_right = ws.x - 14.f;
+    const float badge_top   = 10.f;
+    const float pill_w      = 268.f;
+    const float pill_h      = 50.f;
+
     sf::RectangleShape pill ( {pill_w, pill_h} );
     pill.setPosition ( {badge_right - pill_w, badge_top} );
     pill.setFillColor ( sf::Color ( 10, 18, 36, 200 ) );
@@ -306,16 +551,16 @@ void LevelSelectScene::render ( sf::RenderWindow& window )
         badge_btn_.setFillColor ( sf::Color ( 80, 160, 255 ) );
     }
 
-    badge_text_.setCharacterSize ( 18 );
+    badge_text_.setCharacterSize ( 17 );
     auto bt_bounds = badge_text_.getLocalBounds();
     badge_text_.setOrigin ( {bt_bounds.position.x, bt_bounds.position.y} );
-    badge_text_.setPosition ( {badge_right - pill_w + 12.f, badge_top + 6.f} );
+    badge_text_.setPosition ( {badge_right - pill_w + 10.f, badge_top + 5.f} );
     window.draw ( badge_text_ );
 
-    badge_btn_.setCharacterSize ( 16 );
+    badge_btn_.setCharacterSize ( 15 );
     auto bb_bounds = badge_btn_.getLocalBounds();
     badge_btn_.setOrigin ( {bb_bounds.position.x, bb_bounds.position.y} );
-    badge_btn_.setPosition ( {badge_right - pill_w + 12.f, badge_top + 30.f} );
+    badge_btn_.setPosition ( {badge_right - pill_w + 10.f, badge_top + 27.f} );
     window.draw ( badge_btn_ );
 }
 
