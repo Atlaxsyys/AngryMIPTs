@@ -23,15 +23,15 @@ class SessionManager
 public:
     explicit SessionManager( std::string filepath = "session.json" );
 
-    void loadSession();
-    void saveSession() const;
-    void clearSession();
+    void load_session();
+    void save_session() const;
+    void clear_session();
 
-    bool isLoggedIn() const;
+    bool is_logged_in() const;
     const std::string& token() const;
     const std::string& username() const;
 
-    void setSession( std::string token, std::string username );
+    void set_session( std::string token, std::string username );
 
 private:
     std::string filepath_;

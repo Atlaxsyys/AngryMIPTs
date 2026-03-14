@@ -71,9 +71,9 @@ TEST( AccountService, LoadSessionExposesLoggedInState )
     }
 
     angry::AccountService service( temp_file.path_string(), "http://127.0.0.1:1" );
-    service.loadSession();
+    service.load_session();
 
-    EXPECT_TRUE( service.isLoggedIn() );
+    EXPECT_TRUE( service.is_logged_in() );
     EXPECT_EQ( service.token(), "jwt-token" );
     EXPECT_EQ( service.username(), "alex" );
 }
@@ -87,13 +87,13 @@ TEST( AccountService, LogoutClearsSessionFileAndState )
     }
 
     angry::AccountService service( temp_file.path_string(), "http://127.0.0.1:1" );
-    service.loadSession();
-    ASSERT_TRUE( service.isLoggedIn() );
+    service.load_session();
+    ASSERT_TRUE( service.is_logged_in() );
 
     service.logout();
 
     EXPECT_FALSE( std::filesystem::exists( temp_file.path() ) );
-    EXPECT_FALSE( service.isLoggedIn() );
+    EXPECT_FALSE( service.is_logged_in() );
     EXPECT_TRUE( service.token().empty() );
     EXPECT_TRUE( service.username().empty() );
 }
@@ -102,10 +102,10 @@ TEST( AccountService, SubmitScoreWithoutLoginSkipsOnlineSubmission )
 {
     TempSessionFile temp_file;
     angry::AccountService service( temp_file.path_string(), "http://127.0.0.1:1" );
-    service.loadSession();
-    ASSERT_FALSE( service.isLoggedIn() );
+    service.load_session();
+    ASSERT_FALSE( service.is_logged_in() );
 
-    const bool ok = service.submitScoreIfLoggedIn( 1, 123, 1 );
+    const bool ok = service.submit_score_if_logged_in( 1, 123, 1 );
     EXPECT_FALSE( ok );
 }
 
@@ -117,7 +117,7 @@ TEST( AccountService, LoginServerUnavailableDoesNotPersistSession )
     const angry::AuthResult result = service.login( "alex", "123456" );
     EXPECT_FALSE( result.success );
 
-    service.loadSession();
-    EXPECT_FALSE( service.isLoggedIn() );
+    service.load_session();
+    EXPECT_FALSE( service.is_logged_in() );
     EXPECT_FALSE( std::filesystem::exists( temp_file.path() ) );
 }

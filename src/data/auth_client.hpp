@@ -31,8 +31,8 @@ class AuthClient
 public:
     explicit AuthClient( std::string baseUrl = "" );
 
-    AuthResult registerUser( const std::string& username, const std::string& password ) const;
-    AuthResult loginUser( const std::string& username, const std::string& password ) const;
+    AuthResult register_user( const std::string& username, const std::string& password ) const;
+    AuthResult login_user( const std::string& username, const std::string& password ) const;
 
 private:
     std::string baseUrl_;

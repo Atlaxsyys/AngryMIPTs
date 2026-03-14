@@ -139,7 +139,7 @@ void LoginScene::do_register()
     status_kind_ = StatusKind::Pending;
     status_clock_.restart();
 
-    const AuthResult r = accounts_.registerAndLogin ( username_buf_, password_buf_ );
+    const AuthResult r = accounts_.register_and_login ( username_buf_, password_buf_ );
     if ( r.success )
     {
         status_msg_  = "Registration successful";

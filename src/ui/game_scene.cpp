@@ -772,7 +772,7 @@ void GameScene::finish_level()
     const int score = snapshot_.score;
     const int stars = std::clamp ( snapshot_.stars, 0, 3 );
 
-    const bool logged_in = accounts_ && accounts_->isLoggedIn();
+    const bool logged_in = accounts_ && accounts_->is_logged_in();
     last_result_ = { won, score, stars, logged_in,
                      LeaderboardFetchStatus::Unavailable, {} };
     leaderboard_applied_ = true;
@@ -822,7 +822,7 @@ void GameScene::finish_level()
                             "GameScene: submitting score levelId={} score={} stars={} token={}",
                             level_id, score_value, stars_value,
                             auth_token.empty() ? "(none)" : auth_token.substr ( 0, 12 ) + "..." );
-                        const bool submit_ok = client.submitScoreWithToken (
+                        const bool submit_ok = client.submit_score_with_token (
                             auth_token, level_id, score_value, stars_value );
                         if ( !submit_ok )
                         {
@@ -836,7 +836,7 @@ void GameScene::finish_level()
                     }
 
                     Logger::info ( "GameScene: fetching leaderboard for levelId={}", level_id );
-                    fetch_result = client.fetchLeaderboardWithStatus ( level_id );
+                    fetch_result = client.fetch_leaderboard_with_status ( level_id );
                     Logger::info ( "GameScene: leaderboard for levelId={} has {} entries, status={}",
                                    level_id, fetch_result.entries.size(),
                                    static_cast<int> ( fetch_result.status ) );
@@ -869,7 +869,7 @@ void GameScene::finish_level()
                     "GameScene(web): submitting score levelId={} score={} stars={} token={}",
                     level_id_, score, stars,
                     auth_token.empty() ? "(none)" : auth_token.substr ( 0, 12 ) + "..." );
-                const bool submit_ok = online_score_client_.submitScoreWithToken (
+                const bool submit_ok = online_score_client_.submit_score_with_token (
                     auth_token, level_id_, score, stars );
                 if ( !submit_ok )
                 {
@@ -878,7 +878,7 @@ void GameScene::finish_level()
             }
 
             Logger::info ( "GameScene(web): fetching leaderboard for levelId={}", level_id_ );
-            fetch_result = online_score_client_.fetchLeaderboardWithStatus ( level_id_ );
+            fetch_result = online_score_client_.fetch_leaderboard_with_status ( level_id_ );
             Logger::info (
                 "GameScene(web): leaderboard for levelId={} has {} entries, status={}",
                 level_id_, fetch_result.entries.size(),

@@ -60,7 +60,7 @@ using Time  = sf::Time;
 using RenderTexture = sf::RenderTexture;
 
 // ── Angle helper (SFML 3) ───────────────────────────────────
-inline auto degrees( float v ) { return sf::degrees( v ); }
+inline auto degrees( float angle_deg ) { return sf::degrees( angle_deg ); }
 
 }  // namespace platform
 

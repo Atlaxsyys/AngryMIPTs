@@ -67,13 +67,13 @@ TEST( SessionManager, SaveThenLoadRestoresSession )
     TempSessionFile temp_file;
 
     angry::SessionManager writer( temp_file.path_string() );
-    writer.setSession( "token-abc", "alex" );
-    writer.saveSession();
+    writer.set_session( "token-abc", "alex" );
+    writer.save_session();
 
     angry::SessionManager reader( temp_file.path_string() );
-    reader.loadSession();
+    reader.load_session();
 
-    EXPECT_TRUE( reader.isLoggedIn() );
+    EXPECT_TRUE( reader.is_logged_in() );
     EXPECT_EQ( reader.token(), "token-abc" );
     EXPECT_EQ( reader.username(), "alex" );
 }
@@ -83,9 +83,9 @@ TEST( SessionManager, MissingFileMeansEmptySession )
     TempSessionFile temp_file;
 
     angry::SessionManager sm( temp_file.path_string() );
-    sm.loadSession();
+    sm.load_session();
 
-    EXPECT_FALSE( sm.isLoggedIn() );
+    EXPECT_FALSE( sm.is_logged_in() );
     EXPECT_TRUE( sm.token().empty() );
     EXPECT_TRUE( sm.username().empty() );
 }
@@ -99,9 +99,9 @@ TEST( SessionManager, BrokenJsonResultsInEmptySession )
     }
 
     angry::SessionManager sm( temp_file.path_string() );
-    sm.loadSession();
+    sm.load_session();
 
-    EXPECT_FALSE( sm.isLoggedIn() );
+    EXPECT_FALSE( sm.is_logged_in() );
     EXPECT_TRUE( sm.token().empty() );
     EXPECT_TRUE( sm.username().empty() );
 }
@@ -111,16 +111,16 @@ TEST( SessionManager, ClearSessionRemovesFileAndState )
     TempSessionFile temp_file;
 
     angry::SessionManager sm( temp_file.path_string() );
-    sm.setSession( "token-xyz", "mipt" );
-    sm.saveSession();
+    sm.set_session( "token-xyz", "mipt" );
+    sm.save_session();
 
     ASSERT_TRUE( std::filesystem::exists( temp_file.path() ) );
-    ASSERT_TRUE( sm.isLoggedIn() );
+    ASSERT_TRUE( sm.is_logged_in() );
 
-    sm.clearSession();
+    sm.clear_session();
 
     EXPECT_FALSE( std::filesystem::exists( temp_file.path() ) );
-    EXPECT_FALSE( sm.isLoggedIn() );
+    EXPECT_FALSE( sm.is_logged_in() );
     EXPECT_TRUE( sm.token().empty() );
     EXPECT_TRUE( sm.username().empty() );
 }

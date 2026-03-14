@@ -23,7 +23,7 @@ namespace
 {
 
 template <typename T>
-void clearQueue(ThreadSafeQueue<T>& queue)
+void clear_queue(ThreadSafeQueue<T>& queue)
 {
     while (queue.try_pop().has_value())
     {
@@ -73,8 +73,8 @@ void PhysicsThread::stop()
         worker_.join();
     }
 
-    clearQueue(command_queue_);
-    clearQueue(event_queue_);
+    clear_queue(command_queue_);
+    clear_queue(event_queue_);
 }
 
 bool PhysicsThread::is_running() const

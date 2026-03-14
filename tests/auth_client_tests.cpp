@@ -197,7 +197,7 @@ TEST( AuthClient, RegisterSuccessReturnsPositiveResult )
         {LocalMockHttpServer::ScriptedResponse{201, R"({"ok":true})"}} );
     angry::AuthClient client( server.base_url() );
 
-    const angry::AuthResult result = client.registerUser( "alex", "123456" );
+    const angry::AuthResult result = client.register_user( "alex", "123456" );
     EXPECT_TRUE( result.success );
     EXPECT_EQ( result.username, "alex" );
     EXPECT_TRUE( result.errorMessage.empty() );
@@ -215,7 +215,7 @@ TEST( AuthClient, LoginSuccessReturnsTokenAndUsername )
             200, R"({"token":"jwt-token-123","username":"alex"})"}} );
     angry::AuthClient client( server.base_url() );
 
-    const angry::AuthResult result = client.loginUser( "alex", "123456" );
+    const angry::AuthResult result = client.login_user( "alex", "123456" );
     EXPECT_TRUE( result.success );
     EXPECT_EQ( result.token, "jwt-token-123" );
     EXPECT_EQ( result.username, "alex" );
@@ -234,7 +234,7 @@ TEST( AuthClient, LoginWrongPasswordFailsGracefully )
             401, R"({"error":"invalid username or password"})"}} );
     angry::AuthClient client( server.base_url() );
 
-    const angry::AuthResult result = client.loginUser( "alex", "bad-pass" );
+    const angry::AuthResult result = client.login_user( "alex", "bad-pass" );
     EXPECT_FALSE( result.success );
     EXPECT_TRUE( result.token.empty() );
     EXPECT_TRUE( result.username.empty() );
@@ -244,7 +244,7 @@ TEST( AuthClient, LoginWrongPasswordFailsGracefully )
 TEST( AuthClient, LoginServerUnavailableFailsGracefully )
 {
     angry::AuthClient client( "http://127.0.0.1:1" );
-    const angry::AuthResult result = client.loginUser( "alex", "123456" );
+    const angry::AuthResult result = client.login_user( "alex", "123456" );
     EXPECT_FALSE( result.success );
     EXPECT_TRUE( result.token.empty() );
     EXPECT_TRUE( result.username.empty() );

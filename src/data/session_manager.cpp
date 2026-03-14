@@ -38,7 +38,7 @@ SessionManager::SessionManager( std::string filepath )
 
 // #=# Session Persistence API #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
-void SessionManager::loadSession()
+void SessionManager::load_session()
 {
     token_.clear();
     username_.clear();
@@ -101,7 +101,7 @@ void SessionManager::loadSession()
     }
 }
 
-void SessionManager::saveSession() const
+void SessionManager::save_session() const
 {
     if ( filepath_.empty() )
     {
@@ -145,7 +145,7 @@ void SessionManager::saveSession() const
     }
 }
 
-void SessionManager::clearSession()
+void SessionManager::clear_session()
 {
     token_.clear();
     username_.clear();
@@ -173,7 +173,7 @@ void SessionManager::clearSession()
 
 // #=# Accessors / Mutators #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
-bool SessionManager::isLoggedIn() const
+bool SessionManager::is_logged_in() const
 {
     return !token_.empty() && !username_.empty();
 }
@@ -188,7 +188,7 @@ const std::string& SessionManager::username() const
     return username_;
 }
 
-void SessionManager::setSession( std::string token, std::string username )
+void SessionManager::set_session( std::string token, std::string username )
 {
     token_ = std::move( token );
     username_ = std::move( username );

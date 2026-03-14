@@ -240,7 +240,7 @@ TEST( OnlineScoreClient, SubmitScoreReturnsTrueOn2xx )
     LocalMockHttpServer server( {LocalMockHttpServer::ScriptedResponse{201, R"({"ok":true})"}} );
     angry::OnlineScoreClient client( server.base_url() );
 
-    const bool ok = client.submitScore( "Alice", 7, 1234, 3 );
+    const bool ok = client.submit_score( "Alice", 7, 1234, 3 );
     EXPECT_TRUE( ok );
     EXPECT_EQ( server.request_count(), 1 );
 
@@ -262,7 +262,7 @@ TEST( OnlineScoreClient, FetchLeaderboardParsesValidArray )
             R"([{"playerName":"Alice","score":1200,"stars":3},{"playerName":"Bob","score":900,"stars":2}])"}} );
     angry::OnlineScoreClient client( server.base_url() );
 
-    const auto entries = client.fetchLeaderboard( 3 );
+    const auto entries = client.fetch_leaderboard( 3 );
     ASSERT_EQ( entries.size(), 2u );
     EXPECT_EQ( entries[0].playerName, "Alice" );
     EXPECT_EQ( entries[0].score, 1200 );
@@ -286,7 +286,7 @@ TEST( OnlineScoreClient, FetchLeaderboardReturnsEmptyOnInvalidJson )
     LocalMockHttpServer server( {LocalMockHttpServer::ScriptedResponse{200, "not-a-json"}} );
     angry::OnlineScoreClient client( server.base_url() );
 
-    const auto entries = client.fetchLeaderboard( 2 );
+    const auto entries = client.fetch_leaderboard( 2 );
     EXPECT_TRUE( entries.empty() );
     EXPECT_EQ( server.request_count(), 1 );
 }
@@ -305,7 +305,7 @@ TEST( OnlineScoreClient, SubmitScoreRetriesOn5xxAndFails )
     } );
     angry::OnlineScoreClient client( server.base_url() );
 
-    const bool ok = client.submitScore( "Retry", 1, 10, 1 );
+    const bool ok = client.submit_score( "Retry", 1, 10, 1 );
     EXPECT_FALSE( ok );
     EXPECT_EQ( server.request_count(), 3 );
 }
@@ -324,7 +324,7 @@ TEST( OnlineScoreClient, FetchLeaderboardRetriesOn5xxAndFails )
     } );
     angry::OnlineScoreClient client( server.base_url() );
 
-    const auto entries = client.fetchLeaderboard( 5 );
+    const auto entries = client.fetch_leaderboard( 5 );
     EXPECT_TRUE( entries.empty() );
     EXPECT_EQ( server.request_count(), 3 );
 }
@@ -333,7 +333,7 @@ TEST( OnlineScoreClient, SubmitScoreReturnsFalseOnConnectionFailure )
 {
     // Port 1 is expected to be closed in normal user environments; this should fail fast.
     angry::OnlineScoreClient client( "http://127.0.0.1:1" );
-    const bool ok = client.submitScore( "NoServer", 1, 100, 1 );
+    const bool ok = client.submit_score( "NoServer", 1, 100, 1 );
     EXPECT_FALSE( ok );
 }
 
@@ -347,7 +347,7 @@ TEST( OnlineScoreClient, SubmitScoreWithTokenSendsBearerHeader )
     LocalMockHttpServer server( {LocalMockHttpServer::ScriptedResponse{201, R"({"ok":true})"}} );
     angry::OnlineScoreClient client( server.base_url() );
 
-    const bool ok = client.submitScoreWithToken( "jwt-token-xyz", 7, 4000, 2 );
+    const bool ok = client.submit_score_with_token( "jwt-token-xyz", 7, 4000, 2 );
     EXPECT_TRUE( ok );
     EXPECT_EQ( server.request_count(), 1 );
 
@@ -363,6 +363,6 @@ TEST( OnlineScoreClient, SubmitScoreWithTokenSendsBearerHeader )
 TEST( OnlineScoreClient, SubmitScoreWithTokenReturnsFalseOnEmptyToken )
 {
     angry::OnlineScoreClient client( "http://127.0.0.1:1" );
-    const bool ok = client.submitScoreWithToken( "", 1, 100, 1 );
+    const bool ok = client.submit_score_with_token( "", 1, 100, 1 );
     EXPECT_FALSE( ok );
 }

@@ -159,7 +159,7 @@ int main()
         return 1;
     }
 
-    app.accounts.loadSession();
+    app.accounts.load_session();
 
     auto level_select = std::make_unique<angry::LevelSelectScene>( app.font, &app.accounts );
     level_select->load_data( levels_path, scores_path );
@@ -225,7 +225,7 @@ int main()
 
     const std::string session_path = resolve_project_path ( "session.json" );
     angry::AccountService accounts ( session_path );
-    accounts.loadSession();
+    accounts.load_session();
 
     auto level_select = std::make_unique<angry::LevelSelectScene> ( font, &accounts );
     level_select->load_data ( resolve_project_path ( "levels" ),
@@ -239,7 +239,7 @@ int main()
     scenes.add_scene ( angry::SceneId::Game, std::make_unique<angry::GameScene> ( font, &accounts ) );
     scenes.add_scene ( angry::SceneId::Result, std::make_unique<angry::ResultScene> ( font ) );
     scenes.switch_to (
-        accounts.isLoggedIn() ? angry::SceneId::Menu : angry::SceneId::Login );
+        accounts.is_logged_in() ? angry::SceneId::Menu : angry::SceneId::Login );
 
     while ( window.isOpen() )
     {
