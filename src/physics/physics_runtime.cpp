@@ -1,7 +1,20 @@
+// ============================================================
+// physics_runtime.cpp — Physics mode facade implementation.
+// Part of: angry::physics
+//
+// Implements runtime dispatch between backends:
+//   * Starts/stops worker thread in threaded mode
+//   * Forwards level registration/loading and commands
+//   * Runs direct stepping only in single-threaded mode
+//   * Exposes snapshot/event reads through one interface
+// ============================================================
+
 #include "physics_runtime.hpp"
 
 namespace angry
 {
+
+// #=# Construction / Destruction #=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
 PhysicsRuntime::PhysicsRuntime(PhysicsMode mode)
     : mode_(mode)
@@ -19,6 +32,8 @@ PhysicsRuntime::~PhysicsRuntime()
         threadedEngine_.stop();
     }
 }
+
+// #=# Public API #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
 void PhysicsRuntime::registerLevel(const LevelData& level)
 {
@@ -87,6 +102,8 @@ std::vector<Event> PhysicsRuntime::drainEvents()
 
     return singleEngine_.drainEvents();
 }
+
+// #=# Accessors #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 
 PhysicsMode PhysicsRuntime::mode() const
 {

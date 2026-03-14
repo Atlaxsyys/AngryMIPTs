@@ -1,3 +1,14 @@
+// ============================================================
+// physics_runtime.hpp — Physics mode facade interface.
+// Part of: angry::physics
+//
+// Declares a thin runtime wrapper that:
+//   * Chooses single-threaded or threaded physics backend
+//   * Keeps one stable API for UI/game loop code
+//   * Forwards commands, stepping, snapshots, and events
+//   * Hides backend-specific ownership/lifecycle details
+// ============================================================
+
 #pragma once
 
 #include "physics_engine.hpp"
@@ -20,7 +31,8 @@ enum class PhysicsMode
     Threaded,
 };
 
-// Facade that keeps a stable API while allowing either single-thread or threaded physics backend.
+// Keeps one physics-facing API while internally switching
+// between direct PhysicsEngine and worker-thread backend.
 class PhysicsRuntime
 {
 public:
