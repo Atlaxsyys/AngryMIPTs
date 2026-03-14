@@ -1,3 +1,14 @@
+// ============================================================
+// session_manager.cpp — Persistent auth session implementation.
+// Part of: angry::data
+//
+// Implements session file IO and validation logic:
+//   * Reads/writes session JSON with token/username fields
+//   * Validates schema and gracefully handles corrupt data
+//   * Clears persisted state on explicit logout
+//   * Emits diagnostic logs for load/save/clear operations
+// ============================================================
+
 #include "data/session_manager.hpp"
 
 #include "data/logger.hpp"
@@ -8,6 +19,9 @@
 
 namespace angry
 {
+
+// #=# Local Helpers #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
+
 namespace
 {
 
@@ -15,10 +29,14 @@ using Json = nlohmann::json;
 
 }  // namespace
 
+// #=# Construction #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
+
 SessionManager::SessionManager( std::string filepath )
     : filepath_( std::move( filepath ) )
 {
 }
+
+// #=# Session Persistence API #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
 void SessionManager::loadSession()
 {
@@ -152,6 +170,8 @@ void SessionManager::clearSession()
         Logger::error( "Session clear failed for {}: {}", filepath_, e.what() );
     }
 }
+
+// #=# Accessors / Mutators #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
 bool SessionManager::isLoggedIn() const
 {

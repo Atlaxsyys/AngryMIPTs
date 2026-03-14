@@ -1,3 +1,14 @@
+// ============================================================
+// account_service.hpp — Auth/session/leaderboard facade API.
+// Part of: angry::data
+//
+// Declares high-level account workflows for game scenes:
+//   * Register+login and plain login orchestration
+//   * Session bootstrap, token access, and logout
+//   * Auth-gated score submission to online backend
+//   * Leaderboard retrieval with status/result wrappers
+// ============================================================
+
 #pragma once
 
 #include "data/auth_client.hpp"
@@ -10,6 +21,8 @@
 namespace angry
 {
 
+// Composes auth client, session persistence, and online score
+// client into one scene-friendly account service.
 class AccountService
 {
 public:

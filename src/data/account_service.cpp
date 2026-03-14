@@ -1,3 +1,14 @@
+// ============================================================
+// account_service.cpp — Account facade implementation.
+// Part of: angry::data
+//
+// Implements account-related integration workflows:
+//   * Connects auth API with local session persistence
+//   * Enforces login requirements for score submission
+//   * Provides leaderboard retrieval passthrough methods
+//   * Keeps UI-facing API compact and backend-agnostic
+// ============================================================
+
 #include "data/account_service.hpp"
 
 #include "data/logger.hpp"
@@ -5,12 +16,16 @@
 namespace angry
 {
 
+// #=# Construction #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
+
 AccountService::AccountService( std::string sessionFilepath, std::string baseUrl )
     : sessionManager_( std::move( sessionFilepath ) ),
       authClient_( baseUrl ),
       onlineScoreClient_( std::move( baseUrl ) )
 {
 }
+
+// #=# Session / Auth API #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
 void AccountService::loadSession()
 {
@@ -65,6 +80,8 @@ void AccountService::logout()
 {
     sessionManager_.clearSession();
 }
+
+// #=# Leaderboard API #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
 bool AccountService::submitScoreIfLoggedIn( int levelId, int score, int stars )
 {
