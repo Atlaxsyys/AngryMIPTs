@@ -1,3 +1,14 @@
+// ============================================================
+// physics_thread.cpp — Threaded physics worker implementation.
+// Part of: angry::physics
+//
+// Implements worker-thread orchestration for PhysicsEngine:
+//   * Starts/stops fixed-step simulation thread safely
+//   * Drains command queue and executes deterministic physics ticks
+//   * Publishes double-buffered snapshots for readers
+//   * Collects emitted events into a thread-safe outbound queue
+// ============================================================
+
 #include "physics_thread.hpp"
 
 #include <algorithm>
@@ -5,6 +16,9 @@
 
 namespace angry
 {
+
+// #=# Local Helpers #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
+
 namespace
 {
 
@@ -18,10 +32,14 @@ void clearQueue(ThreadSafeQueue<T>& queue)
 
 }  // namespace
 
+// #=# Construction / Destruction #=#=#=#=#=#=#=#=#=#=#=#=#=#=#
+
 PhysicsThread::~PhysicsThread()
 {
     stop();
 }
+
+// #=# Lifecycle & Command API #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
 void PhysicsThread::start()
 {
@@ -107,6 +125,8 @@ void PhysicsThread::pushCommand(const Command& cmd)
     commandQueue_.push(cmd);
 }
 
+// #=# Single-Thread Adapter #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
+
 void PhysicsThread::tickSingleThread(float dt)
 {
     if (isRunning())
@@ -126,6 +146,8 @@ void PhysicsThread::tickSingleThread(float dt)
     }
 }
 
+// #=# Snapshot / Events API #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
+
 WorldSnapshot PhysicsThread::readSnapshot() const
 {
     std::lock_guard<std::mutex> lock(snapshotMutex_);
@@ -142,6 +164,8 @@ std::vector<Event> PhysicsThread::drainEvents()
     }
     return events;
 }
+
+// #=# Worker Internals #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 
 void PhysicsThread::workerLoop()
 {
@@ -189,6 +213,8 @@ void PhysicsThread::workerLoop()
     }
 }
 
+// Publishes newly computed world state by flipping back/front
+// snapshot buffers under snapshot mutex.
 void PhysicsThread::publishSnapshotLocked()
 {
     std::lock_guard<std::mutex> lock(snapshotMutex_);

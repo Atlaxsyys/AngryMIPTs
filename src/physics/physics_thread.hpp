@@ -1,3 +1,14 @@
+// ============================================================
+// physics_thread.hpp — Threaded physics worker interface.
+// Part of: angry::physics
+//
+// Declares PhysicsThread, a worker-wrapper over PhysicsEngine:
+//   * Owns lifecycle of background fixed-step simulation thread
+//   * Accepts command stream and forwards it to PhysicsEngine
+//   * Publishes double-buffered WorldSnapshot for lock-safe reads
+//   * Buffers produced physics events for main-thread draining
+// ============================================================
+
 #pragma once
 
 #include "physics_engine.hpp"
@@ -19,7 +30,8 @@
 namespace angry
 {
 
-// Thread wrapper over PhysicsEngine with fixed-step worker and snapshot buffering.
+// Runs PhysicsEngine in a fixed-step worker thread and exposes
+// thread-safe snapshot/event access for the main loop.
 class PhysicsThread
 {
 public:
