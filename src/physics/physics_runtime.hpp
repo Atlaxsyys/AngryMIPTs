@@ -51,8 +51,8 @@ public:
 
 private:
     PhysicsMode mode_ = PhysicsMode::SingleThread;
-    PhysicsEngine singleEngine_;
-    PhysicsThread threadedEngine_;
+    PhysicsEngine single_engine_;
+    PhysicsThread threaded_engine_;
 };
 
 }  // namespace angry

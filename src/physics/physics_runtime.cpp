@@ -21,7 +21,7 @@ PhysicsRuntime::PhysicsRuntime(PhysicsMode mode)
 {
     if (mode_ == PhysicsMode::Threaded)
     {
-        threadedEngine_.start();
+        threaded_engine_.start();
     }
 }
 
@@ -29,7 +29,7 @@ PhysicsRuntime::~PhysicsRuntime()
 {
     if (mode_ == PhysicsMode::Threaded)
     {
-        threadedEngine_.stop();
+        threaded_engine_.stop();
     }
 }
 
@@ -39,22 +39,22 @@ void PhysicsRuntime::register_level(const LevelData& level)
 {
     if (mode_ == PhysicsMode::Threaded)
     {
-        threadedEngine_.register_level(level);
+        threaded_engine_.register_level(level);
         return;
     }
 
-    singleEngine_.register_level(level);
+    single_engine_.register_level(level);
 }
 
 void PhysicsRuntime::loadLevel(const LevelData& level)
 {
     if (mode_ == PhysicsMode::Threaded)
     {
-        threadedEngine_.loadLevel(level);
+        threaded_engine_.loadLevel(level);
         return;
     }
 
-    singleEngine_.load_level(level);
+    single_engine_.load_level(level);
 }
 
 void PhysicsRuntime::process_commands(ThreadSafeQueue<Command>& cmdQueue)
@@ -63,12 +63,12 @@ void PhysicsRuntime::process_commands(ThreadSafeQueue<Command>& cmdQueue)
     {
         while (const std::optional<Command> cmd = cmdQueue.try_pop())
         {
-            threadedEngine_.push_command(*cmd);
+            threaded_engine_.push_command(*cmd);
         }
         return;
     }
 
-    singleEngine_.process_commands(cmdQueue);
+    single_engine_.process_commands(cmdQueue);
 }
 
 void PhysicsRuntime::step(float dt)
@@ -80,27 +80,27 @@ void PhysicsRuntime::step(float dt)
         return;
     }
 
-    singleEngine_.step(dt);
+    single_engine_.step(dt);
 }
 
 WorldSnapshot PhysicsRuntime::get_snapshot() const
 {
     if (mode_ == PhysicsMode::Threaded)
     {
-        return threadedEngine_.read_snapshot();
+        return threaded_engine_.read_snapshot();
     }
 
-    return singleEngine_.get_snapshot();
+    return single_engine_.get_snapshot();
 }
 
 std::vector<Event> PhysicsRuntime::drain_events()
 {
     if (mode_ == PhysicsMode::Threaded)
     {
-        return threadedEngine_.drain_events();
+        return threaded_engine_.drain_events();
     }
 
-    return singleEngine_.drain_events();
+    return single_engine_.drain_events();
 }
 
 // #=# Accessors #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=

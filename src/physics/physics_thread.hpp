@@ -62,15 +62,15 @@ private:
     static constexpr float kFixedDtSec = 1.0f / 60.0f;
 
     mutable std::mutex mutex_;
-    std::condition_variable stopCv_;
+    std::condition_variable stop_cv_;
     std::thread worker_;
-    std::atomic<bool> stopRequested_{false};
+    std::atomic<bool> stop_requested_{false};
     PhysicsEngine engine_;
-    ThreadSafeQueue<Command> commandQueue_;
-    ThreadSafeQueue<Event> eventQueue_;
+    ThreadSafeQueue<Command> command_queue_;
+    ThreadSafeQueue<Event> event_queue_;
     std::array<WorldSnapshot, 2> snapshots_{};
-    mutable std::mutex snapshotMutex_;
-    std::atomic<int> frontSnapshotIndex_{0};
+    mutable std::mutex snapshot_mutex_;
+    std::atomic<int> front_snapshot_index_{0};
     bool running_ = false;
 };
 
