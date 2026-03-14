@@ -475,19 +475,19 @@ void PhysicsEngine::loadLevel(const LevelData& level)
     supportBottomPx_ = supportBottomPx;
     groundTopYpx_ = kGroundTopYpx;
     levelYOffsetPx_ = groundTopYpx_ - supportBottomPx_;
-    createGround(groundTopYpx_);
+    create_ground(groundTopYpx_);
 
     for (const BlockData& block : level.blocks)
     {
-        createBlockBody(block);
+        create_block_body(block);
     }
 
     for (const TargetData& target : level.targets)
     {
-        createTargetBody(target);
+        create_target_body(target);
     }
 
-    refreshSnapshot();
+    refresh_snapshot();
 }
 
 // #=# Simulation Step #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
@@ -507,7 +507,7 @@ void PhysicsEngine::step(float dt)
 
     for (const Command& cmd : pendingCommands_)
     {
-        applyCommand(cmd);
+        apply_command(cmd);
     }
     pendingCommands_.clear();
 
@@ -961,7 +961,7 @@ void PhysicsEngine::step(float dt)
 
         if (binding.bodyId.index1 != 0)
         {
-            destroyBody(binding.bodyId);
+            destroy_body(binding.bodyId);
         }
 
         if (i + 1 < bodies_.size())
@@ -994,7 +994,7 @@ void PhysicsEngine::step(float dt)
 
             if (correction.applyDampingGrace)
             {
-                BodyBinding* projectile = findBinding(correction.projectileBodyId);
+                BodyBinding* projectile = find_binding(correction.projectileBodyId);
                 if (projectile != nullptr && projectile->kind == ObjectSnapshot::Kind::Projectile)
                 {
                     projectile->postBreakDampingGraceSec = std::max(
@@ -1115,7 +1115,7 @@ void PhysicsEngine::step(float dt)
 
             if (B2_IS_NON_NULL(bodies_[i].bodyId) && b2Body_IsValid(bodies_[i].bodyId))
             {
-                destroyBody(bodies_[i].bodyId);
+                destroy_body(bodies_[i].bodyId);
             }
 
             if (i + 1 < bodies_.size())
@@ -1128,9 +1128,9 @@ void PhysicsEngine::step(float dt)
 
     if (!settledSecondaryProjectileIds.empty()
         && B2_IS_NULL(activeProjectileBodyId_)
-        && !hasAliveProjectiles())
+        && !has_alive_projectiles())
     {
-        tryPrepareNextProjectile();
+        try_prepare_next_projectile();
     }
 
     if (B2_IS_NON_NULL(activeProjectileBodyId_))
@@ -1142,7 +1142,7 @@ void PhysicsEngine::step(float dt)
             activeProjectileSettledTimeSec_ = 0.0f;
             activeProjectileType_ = ProjectileType::Standard;
             activeProjectileAbilityUsed_ = false;
-            tryPrepareNextProjectile();
+            try_prepare_next_projectile();
         }
         else
         {
@@ -1172,29 +1172,29 @@ void PhysicsEngine::step(float dt)
 
             if (isOutOfBoundsPx(projectilePosPx))
             {
-                destroyBody(activeProjectileBodyId_);
+                destroy_body(activeProjectileBodyId_);
                 activeProjectileBodyId_ = b2_nullBodyId;
                 activeProjectileSettledFrames_ = 0;
                 activeProjectileSettledTimeSec_ = 0.0f;
                 activeProjectileType_ = ProjectileType::Standard;
                 activeProjectileAbilityUsed_ = false;
-                tryPrepareNextProjectile();
+                try_prepare_next_projectile();
             }
             else if (activeProjectileSettledFrames_ >= kProjectileSettledFramesNeeded
                 && activeProjectileSettledTimeSec_ >= kProjectileSettledRemoveDelaySec)
             {
-                destroyBody(activeProjectileBodyId_);
+                destroy_body(activeProjectileBodyId_);
                 activeProjectileBodyId_ = b2_nullBodyId;
                 activeProjectileSettledFrames_ = 0;
                 activeProjectileSettledTimeSec_ = 0.0f;
                 activeProjectileType_ = ProjectileType::Standard;
                 activeProjectileAbilityUsed_ = false;
-                tryPrepareNextProjectile();
+                try_prepare_next_projectile();
             }
         }
     }
 
-    updateLevelStatus();
+    update_level_status();
     if (statusBeforeStep != snapshot_.status
         && (snapshot_.status == LevelStatus::Win || snapshot_.status == LevelStatus::Lose))
     {
@@ -1207,7 +1207,7 @@ void PhysicsEngine::step(float dt)
             snapshot_.score,
             stars});
     }
-    refreshSnapshot();
+    refresh_snapshot();
 
     const auto end = std::chrono::steady_clock::now();
     snapshot_.physicsStepMs = std::chrono::duration<float, std::milli>(end - start).count();
@@ -1229,7 +1229,7 @@ std::vector<Event> PhysicsEngine::drainEvents()
 
 // #=# Command Dispatch #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=
 
-void PhysicsEngine::applyCommand(const Command& cmd)
+void PhysicsEngine::apply_command(const Command& cmd)
 {
     std::visit(
         [this](const auto& concrete)
@@ -1262,12 +1262,12 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                     return;
                 }
 
-                const Vec2 launchVelocityPx = computeLaunchVelocityPx(concrete.pullVectorPx);
+                const Vec2 launchVelocityPx = compute_launch_velocity_px(concrete.pullVectorPx);
                 const Vec2 launchOriginPx = {
                     snapshot_.slingshot.basePx.x,
                     snapshot_.slingshot.basePx.y - kSlingshotForkYOffsetPx,
                 };
-                const b2BodyId projectileBodyId = createProjectileBody(
+                const b2BodyId projectileBodyId = create_projectile_body(
                     snapshot_.slingshot.nextProjectile,
                     launchOriginPx,
                     launchVelocityPx);
@@ -1299,7 +1299,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                     return;
                 }
 
-                BodyBinding* projectile = findBinding(activeProjectileBodyId_);
+                BodyBinding* projectile = find_binding(activeProjectileBodyId_);
                 if (projectile == nullptr)
                 {
                     return;
@@ -1348,8 +1348,8 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                         const Vec2 rightVelPx = rotatePxVector(velPx, kSplitAngleRad);
 
                         // Spawn split projectiles exactly at the parent position.
-                        createProjectileBody(ProjectileType::Splitter, posPx, leftVelPx);
-                        createProjectileBody(ProjectileType::Splitter, posPx, rightVelPx);
+                        create_projectile_body(ProjectileType::Splitter, posPx, leftVelPx);
+                        create_projectile_body(ProjectileType::Splitter, posPx, rightVelPx);
                         activeProjectileAbilityUsed_ = true;
                         events_.push_back(AbilityActivatedEvent{
                             projectile->id,
@@ -1370,7 +1370,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                         velPx.x * 0.15f,
                         droppedDownSpeedPx,
                     };
-                    createProjectileBody(ProjectileType::Standard, posPx, droppedVelPx);
+                    create_projectile_body(ProjectileType::Standard, posPx, droppedVelPx);
 
                     Vec2 boostedParentVelPx = velPx;
                     boostedParentVelPx.x *= 1.05f;
@@ -1552,7 +1552,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
 
                     if (B2_IS_NON_NULL(oldBodyId) && b2Body_IsValid(oldBodyId))
                     {
-                        destroyBody(oldBodyId);
+                        destroy_body(oldBodyId);
                     }
                     const auto oldIt = std::find_if(
                         bodies_.begin(),
@@ -1655,7 +1655,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
 
                     if (B2_IS_NON_NULL(bomberBodyId) && b2Body_IsValid(bomberBodyId))
                     {
-                        destroyBody(bomberBodyId);
+                        destroy_body(bomberBodyId);
                     }
                     for (std::size_t i = 0; i < bodies_.size(); ++i)
                     {
@@ -1712,7 +1712,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
 
                         if (victim.bodyId.index1 != 0)
                         {
-                            destroyBody(victim.bodyId);
+                            destroy_body(victim.bodyId);
                         }
 
                         if (i + 1 < bodies_.size())
@@ -1727,7 +1727,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
                     activeProjectileSettledTimeSec_ = 0.0f;
                     activeProjectileType_ = ProjectileType::Standard;
                     activeProjectileAbilityUsed_ = false;
-                    tryPrepareNextProjectile();
+                    try_prepare_next_projectile();
 
                     events_.push_back(AbilityActivatedEvent{
                         bomberId,
@@ -1741,7 +1741,7 @@ void PhysicsEngine::applyCommand(const Command& cmd)
 
 // #=# World Geometry #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
-void PhysicsEngine::createGround(float topYpx)
+void PhysicsEngine::create_ground(float topYpx)
 {
     if (B2_IS_NULL(worldId_))
     {
@@ -1800,7 +1800,7 @@ void PhysicsEngine::createGround(float topYpx)
 
 // #=# Body Factories #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
-void PhysicsEngine::createBlockBody(const BlockData& block)
+void PhysicsEngine::create_block_body(const BlockData& block)
 {
     if (B2_IS_NULL(worldId_))
     {
@@ -1913,7 +1913,7 @@ void PhysicsEngine::createBlockBody(const BlockData& block)
     bodies_.push_back(binding);
 }
 
-void PhysicsEngine::createTargetBody(const TargetData& target)
+void PhysicsEngine::create_target_body(const TargetData& target)
 {
     if (B2_IS_NULL(worldId_))
     {
@@ -1955,7 +1955,7 @@ void PhysicsEngine::createTargetBody(const TargetData& target)
     bodies_.push_back(binding);
 }
 
-b2BodyId PhysicsEngine::createProjectileBody(ProjectileType type, const Vec2& spawnPx, const Vec2& launchVelocityPx)
+b2BodyId PhysicsEngine::create_projectile_body(ProjectileType type, const Vec2& spawnPx, const Vec2& launchVelocityPx)
 {
     if (B2_IS_NULL(worldId_))
     {
@@ -2055,14 +2055,14 @@ b2BodyId PhysicsEngine::createProjectileBody(ProjectileType type, const Vec2& sp
 
 // #=# Lifecycle & Status #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
-void PhysicsEngine::destroyBody(b2BodyId bodyId)
+void PhysicsEngine::destroy_body(b2BodyId bodyId)
 {
     if (B2_IS_NULL(worldId_) || B2_IS_NULL(bodyId))
     {
         return;
     }
 
-    BodyBinding* binding = findBinding(bodyId);
+    BodyBinding* binding = find_binding(bodyId);
     if (binding != nullptr)
     {
         const b2Vec2 worldPos = b2Body_GetPosition(bodyId);
@@ -2075,7 +2075,7 @@ void PhysicsEngine::destroyBody(b2BodyId bodyId)
     b2DestroyBody(bodyId);
 }
 
-void PhysicsEngine::updateLevelStatus()
+void PhysicsEngine::update_level_status()
 {
     bool hasAliveTargets = false;
 
@@ -2094,7 +2094,7 @@ void PhysicsEngine::updateLevelStatus()
         return;
     }
 
-    if (snapshot_.shotsRemaining == 0 && !hasAliveProjectiles())
+    if (snapshot_.shotsRemaining == 0 && !has_alive_projectiles())
     {
         // Invariant: level can be won only when all targets are destroyed.
         snapshot_.status = LevelStatus::Lose;
@@ -2105,7 +2105,7 @@ void PhysicsEngine::updateLevelStatus()
     }
 }
 
-void PhysicsEngine::refreshSnapshot()
+void PhysicsEngine::refresh_snapshot()
 {
     snapshot_.objects.clear();
     snapshot_.objects.reserve(bodies_.size());
@@ -2164,11 +2164,11 @@ void PhysicsEngine::refreshSnapshot()
     }
 }
 
-void PhysicsEngine::tryPrepareNextProjectile()
+void PhysicsEngine::try_prepare_next_projectile()
 {
     snapshot_.slingshot.canShoot =
         nextProjectileIndex_ < static_cast<int>(currentLevel_.projectiles.size())
-        && !hasAliveProjectiles();
+        && !has_alive_projectiles();
     if (snapshot_.slingshot.canShoot)
     {
         snapshot_.slingshot.nextProjectile = currentLevel_.projectiles[nextProjectileIndex_].type;
@@ -2176,7 +2176,7 @@ void PhysicsEngine::tryPrepareNextProjectile()
     }
 }
 
-bool PhysicsEngine::hasAliveProjectiles() const
+bool PhysicsEngine::has_alive_projectiles() const
 {
     for (const BodyBinding& binding : bodies_)
     {
@@ -2193,7 +2193,7 @@ bool PhysicsEngine::hasAliveProjectiles() const
     return false;
 }
 
-Vec2 PhysicsEngine::computeLaunchVelocityPx(const Vec2& pullVectorPx) const
+Vec2 PhysicsEngine::compute_launch_velocity_px(const Vec2& pullVectorPx) const
 {
     const float power = 4.5f;
     return {
@@ -2202,7 +2202,7 @@ Vec2 PhysicsEngine::computeLaunchVelocityPx(const Vec2& pullVectorPx) const
     };
 }
 
-PhysicsEngine::BodyBinding* PhysicsEngine::findBinding(b2BodyId bodyId)
+PhysicsEngine::BodyBinding* PhysicsEngine::find_binding(b2BodyId bodyId)
 {
     for (BodyBinding& binding : bodies_)
     {

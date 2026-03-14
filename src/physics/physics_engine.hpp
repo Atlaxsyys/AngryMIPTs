@@ -83,18 +83,18 @@ private:
 
     // #=# Internal Helpers #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
-    void applyCommand(const Command& cmd);
-    void createGround(float topYpx);
-    void createBlockBody(const BlockData& block);
-    void createTargetBody(const TargetData& target);
-    b2BodyId createProjectileBody(ProjectileType type, const Vec2& spawnPx, const Vec2& launchVelocityPx);
-    void destroyBody(b2BodyId bodyId);
-    void updateLevelStatus();
-    void refreshSnapshot();
-    void tryPrepareNextProjectile();
-    bool hasAliveProjectiles() const;
-    Vec2 computeLaunchVelocityPx(const Vec2& pullVectorPx) const;
-    BodyBinding* findBinding(b2BodyId bodyId);
+    void apply_command(const Command& cmd);
+    void create_ground(float topYpx);
+    void create_block_body(const BlockData& block);
+    void create_target_body(const TargetData& target);
+    b2BodyId create_projectile_body(ProjectileType type, const Vec2& spawnPx, const Vec2& launchVelocityPx);
+    void destroy_body(b2BodyId bodyId);
+    void update_level_status();
+    void refresh_snapshot();
+    void try_prepare_next_projectile();
+    bool has_alive_projectiles() const;
+    Vec2 compute_launch_velocity_px(const Vec2& pullVectorPx) const;
+    BodyBinding* find_binding(b2BodyId bodyId);
 
     // #=# Internal State #=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#=#
 
