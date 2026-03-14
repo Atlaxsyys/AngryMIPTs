@@ -824,9 +824,11 @@ void GameScene::finish_level()
                     if ( won_value )
                     {
                         Logger::info (
-                            "GameScene: submitting score levelId={} score={} stars={} token={}",
-                            level_id, score_value, stars_value,
-                            auth_token.empty() ? "(none)" : auth_token.substr ( 0, 12 ) + "..." );
+                            "GameScene: submitting score levelId={} score={} stars={} auth={}",
+                            level_id,
+                            score_value,
+                            stars_value,
+                            auth_token.empty() ? "guest" : "logged-in" );
                         const bool submit_ok = client.submit_score_with_token (
                             auth_token, level_id, score_value, stars_value );
                         if ( !submit_ok )
@@ -871,9 +873,11 @@ void GameScene::finish_level()
             {
                 const std::string auth_token = accounts_ ? accounts_->token() : std::string {};
                 Logger::info (
-                    "GameScene(web): submitting score levelId={} score={} stars={} token={}",
-                    level_id_, score, stars,
-                    auth_token.empty() ? "(none)" : auth_token.substr ( 0, 12 ) + "..." );
+                    "GameScene(web): submitting score levelId={} score={} stars={} auth={}",
+                    level_id_,
+                    score,
+                    stars,
+                    auth_token.empty() ? "guest" : "logged-in" );
                 const bool submit_ok = online_score_client_.submit_score_with_token (
                     auth_token, level_id_, score, stars );
                 if ( !submit_ok )
