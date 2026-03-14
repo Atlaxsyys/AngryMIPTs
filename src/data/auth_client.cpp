@@ -174,6 +174,11 @@ AuthResult AuthClient::login_user(
     const std::string& username,
     const std::string& password ) const
 {
+    if ( is_insecure_non_local_url( baseUrl_ ) )
+    {
+        Logger::info( "AuthClient: connecting to insecure (non-HTTPS) backend URL '{}'", baseUrl_ );
+    }
+
     Logger::info( "Login request started" );
 
     const Json body = {
