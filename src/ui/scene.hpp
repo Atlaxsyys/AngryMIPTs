@@ -1,3 +1,14 @@
+// ============================================================
+// scene.hpp — Base scene interface and scene identifiers.
+// Part of: angry::ui
+//
+// Defines common UI scene contract used by SceneManager:
+//   * SceneId values for app navigation states
+//   * Abstract input/update/render virtual interface
+//   * Shared platform event/window integration points
+//   * Minimal base API for concrete scene implementations
+// ============================================================
+
 #pragma once
 #include "platform/platform.hpp"
 
