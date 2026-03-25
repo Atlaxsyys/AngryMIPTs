@@ -204,11 +204,12 @@ void Renderer::draw_hud ( platform::RenderTarget& target, const WorldSnapshot& s
             platform::Sprite icon ( tex );
             const platform::Vec2u tex_size = tex.getSize();
             const float diameter = front_projectile ? radius * 2.f + 3.f : radius * 2.f;
+            const float icon_slide_px = front_projectile ? slide_px : 0.f;
             icon.setOrigin ( {static_cast<float> ( tex_size.x ) * 0.5f,
                               static_cast<float> ( tex_size.y ) * 0.5f} );
             icon.setScale ( {diameter / static_cast<float> ( tex_size.x ),
                              diameter / static_cast<float> ( tex_size.y )} );
-            icon.setPosition ( {slot_x + slide_px, base_y} );
+            icon.setPosition ( {slot_x + icon_slide_px, base_y} );
             icon.setColor ( front_projectile ? platform::Color::White
                                              : platform::Color ( 245, 245, 245, 208 ) );
             target.draw ( icon );
@@ -217,7 +218,7 @@ void Renderer::draw_hud ( platform::RenderTarget& target, const WorldSnapshot& s
             {
                 platform::CircleShape ring ( radius + 1.5f );
                 ring.setOrigin ( {radius + 1.5f, radius + 1.5f} );
-                ring.setPosition ( {slot_x + slide_px, base_y} );
+                ring.setPosition ( {slot_x + icon_slide_px, base_y} );
                 ring.setFillColor ( platform::Color::Transparent );
                 ring.setOutlineThickness ( 1.8f );
                 ring.setOutlineColor ( projectile_outline ( type ) );
@@ -252,6 +253,26 @@ void Renderer::draw_snapshot ( platform::RenderTarget& target, const WorldSnapsh
 
 void Renderer::draw_background ( platform::RenderTarget& target )
 {
+#ifdef __EMSCRIPTEN__
+    // Web fallback: avoid per-vertex gradient artifacts on raylib/WebGL by
+    // drawing layered color bands and explicit silhouettes.
+    {
+        platform::RectShape sky_top ( {kWorldW, kGroundY * 0.34f} );
+        sky_top.setPosition ( {0.f, 0.f} );
+        sky_top.setFillColor ( platform::Color ( 72, 140, 205 ) );
+        target.draw ( sky_top );
+
+        platform::RectShape sky_mid ( {kWorldW, kGroundY * 0.34f} );
+        sky_mid.setPosition ( {0.f, kGroundY * 0.34f} );
+        sky_mid.setFillColor ( platform::Color ( 110, 176, 220 ) );
+        target.draw ( sky_mid );
+
+        platform::RectShape sky_low ( {kWorldW, kGroundY * 0.32f} );
+        sky_low.setPosition ( {0.f, kGroundY * 0.68f} );
+        sky_low.setFillColor ( platform::Color ( 170, 214, 238 ) );
+        target.draw ( sky_low );
+    }
+#else
     // Sky — smooth vertical gradient from deep blue (top) to hazy horizon (bottom)
     // using a TriangleStrip with per-vertex colours.
     {
@@ -286,6 +307,7 @@ void Renderer::draw_background ( platform::RenderTarget& target )
         sky[7] = { {kWorldW,  y3}, c_horizon};
         target.draw ( sky );
     }
+#endif
 
     // Distant hills (dark green silhouettes)
     draw_hill ( target, 300.f, kGroundY, 400.f, 120.f, platform::Color ( 52, 110, 48, 255 ) );
@@ -300,6 +322,30 @@ void Renderer::draw_background ( platform::RenderTarget& target )
     draw_cloud ( target, std::fmod ( 1200.f + t * 4.1f, kWorldW + 300.f ) - 150.f, 150.f, 1.0f );
     draw_cloud ( target, std::fmod ( 1600.f + t * 7.4f, kWorldW + 360.f ) - 180.f, 100.f, 0.6f );
 
+#ifdef __EMSCRIPTEN__
+    // Ground layers (explicit bands for stable web rendering).
+    {
+        platform::RectShape grass ( {kWorldW, 22.f} );
+        grass.setPosition ( {0.f, kGroundY} );
+        grass.setFillColor ( platform::Color ( 84, 156, 58 ) );
+        target.draw ( grass );
+
+        platform::RectShape topsoil ( {kWorldW, 36.f} );
+        topsoil.setPosition ( {0.f, kGroundY + 22.f} );
+        topsoil.setFillColor ( platform::Color ( 112, 78, 44 ) );
+        target.draw ( topsoil );
+
+        platform::RectShape soil ( {kWorldW, 84.f} );
+        soil.setPosition ( {0.f, kGroundY + 58.f} );
+        soil.setFillColor ( platform::Color ( 72, 50, 28 ) );
+        target.draw ( soil );
+
+        platform::RectShape deep ( {kWorldW, kWorldH - ( kGroundY + 142.f )} );
+        deep.setPosition ( {0.f, kGroundY + 142.f} );
+        deep.setFillColor ( platform::Color ( 48, 34, 18 ) );
+        target.draw ( deep );
+    }
+#else
     // --- Ground ---
     // Earth body: smooth gradient (grass top → topsoil → dark soil → deep)
     {
@@ -324,6 +370,7 @@ void Renderer::draw_background ( platform::RenderTarget& target )
         ground[7] = { {kWorldW, gy3}, c_deep  };
         target.draw ( ground );
     }
+#endif
 
     // Horizon haze: thin semi-transparent strip to soften the sky/ground edge
     {
