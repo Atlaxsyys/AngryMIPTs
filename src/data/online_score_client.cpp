@@ -59,20 +59,45 @@ bool is_insecure_non_local_url( const std::string& url )
     return starts_with( url, "http://" ) && !is_local_http_url( url );
 }
 
+std::string trim_trailing_slashes( std::string url )
+{
+    while ( url.size() > 1 && url.back() == '/' )
+    {
+        url.pop_back();
+    }
+    return url;
+}
+
+std::string normalize_backend_url( std::string url )
+{
+    url = trim_trailing_slashes( std::move( url ) );
+
+    // Common misconfiguration in web deploy:
+    // frontend domain is used instead of API domain.
+    if ( url == "angrymipts.ru"
+         || url == "https://angrymipts.ru"
+         || url == "http://angrymipts.ru" )
+    {
+        return std::string( "https://api.angrymipts.ru" );
+    }
+
+    return url;
+}
+
 std::string resolve_backend_url( std::string base_url )
 {
     if ( !base_url.empty() )
     {
-        return base_url;
+        return normalize_backend_url( std::move( base_url ) );
     }
 
     const char* envUrl = std::getenv( kBackendUrlEnvVar );
     if ( envUrl != nullptr && envUrl[0] != '\0' )
     {
-        return std::string( envUrl );
+        return normalize_backend_url( std::string( envUrl ) );
     }
 
-    return std::string( kDefaultBackendUrl );
+    return normalize_backend_url( std::string( kDefaultBackendUrl ) );
 }
 
 bool should_retry_request( const platform::http::Response& response )
@@ -244,7 +269,7 @@ bool OnlineScoreClient::submit_score(
         [&]()
         {
             return platform::http::post(
-                "https://api.angrymipts.ru/scores",
+                base_url_ + "/scores",
                 body.dump(),
                 platform::http::Headers {
                     {"Content-Type", "application/json"},
